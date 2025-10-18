@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "alpha-agent"
+version = "0.1.0"
+description = "ALPHA – Autonomous Least-Privilege Hardening Agent"
+authors = ["TODO <team@example.com>"]
+readme = "README.md"
+packages = [{ include = "alpha_agent", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+boto3 = "^1.35.0"
+botocore = "^1.35.0"
+tenacity = "^8.5.0"
+requests = "^2.32.3"
+pydantic = "^2.8.2"
+
+[tool.poetry.dev-dependencies]
+moto = "^5.0.17"
+pytest = "^8.2.2"
+pytest-asyncio = "^0.23.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

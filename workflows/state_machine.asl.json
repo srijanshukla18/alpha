@@ -1,0 +1,178 @@
+{
+  "Comment": "ALPHA staged policy remediation workflow",
+  "StartAt": "GeneratePolicy",
+  "States": {
+    "GeneratePolicy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${GeneratePolicyFunction}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.generatedPolicy",
+      "Next": "ReasonOverPolicy"
+    },
+    "ReasonOverPolicy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${BedrockReasonerFunction}",
+        "Payload": {
+          "context.$": "$.context",
+          "policy.$": "$.generatedPolicy"
+        }
+      },
+      "ResultPath": "$.proposal",
+      "Next": "ApplyGuardrails"
+    },
+    "ApplyGuardrails": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${GuardrailFunction}",
+        "Payload": {
+          "policy.$": "$.proposal.Payload"
+        }
+      },
+      "ResultPath": "$.sanitizedProposal",
+      "Next": "PersistProposal"
+    },
+    "PersistProposal": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${ProposalTable}",
+        "Key": {
+          "proposal_id": {
+            "S.$": "$.context.roleArn"
+          }
+        },
+        "UpdateExpression": "SET payload = :payload",
+        "ExpressionAttributeValues": {
+          ":payload": {
+            "S.$": "$.sanitizedProposal.Payload"
+          }
+        }
+      },
+      "Next": "WaitForApproval"
+    },
+    "WaitForApproval": {
+      "Type": "Wait",
+      "Seconds": 300,
+      "Next": "CheckApproval"
+    },
+    "CheckApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ApprovalCheckerFunction}",
+        "Payload": {
+          "proposal_id.$": "$.context.roleArn"
+        }
+      },
+      "ResultPath": "$.approvalStatus",
+      "Next": "ApprovalDecision"
+    },
+    "ApprovalDecision": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approvalStatus.Payload.approved",
+          "BooleanEquals": true,
+          "Next": "SandboxRollout"
+        }
+      ],
+      "Default": "WaitForApproval"
+    },
+    "SandboxRollout": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RolloutFunction}",
+        "Payload": {
+          "stage": "sandbox",
+          "proposal.$": "$.sanitizedProposal.Payload"
+        }
+      },
+      "ResultPath": "$.sandboxOutcome",
+      "Next": "CanaryDecision"
+    },
+    "CanaryDecision": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.sandboxOutcome.Payload.succeeded",
+          "BooleanEquals": true,
+          "Next": "CanaryRollout"
+        }
+      ],
+      "Default": "RollbackSandbox"
+    },
+    "RollbackSandbox": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RollbackFunction}",
+        "Payload": {
+          "stage": "sandbox",
+          "proposal.$": "$.sanitizedProposal.Payload"
+        }
+      },
+      "ResultPath": "$.rollbackSandbox",
+      "End": true
+    },
+    "CanaryRollout": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RolloutFunction}",
+        "Payload": {
+          "stage": "canary",
+          "proposal.$": "$.sanitizedProposal.Payload"
+        }
+      },
+      "ResultPath": "$.canaryOutcome",
+      "Next": "TargetDecision"
+    },
+    "TargetDecision": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.canaryOutcome.Payload.succeeded",
+          "BooleanEquals": true,
+          "Next": "TargetRollout"
+        }
+      ],
+      "Default": "RollbackCanary"
+    },
+    "RollbackCanary": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RollbackFunction}",
+        "Payload": {
+          "stage": "canary",
+          "proposal.$": "$.sanitizedProposal.Payload"
+        }
+      },
+      "ResultPath": "$.rollbackCanary",
+      "End": true
+    },
+    "TargetRollout": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${RolloutFunction}",
+        "Payload": {
+          "stage": "target",
+          "proposal.$": "$.sanitizedProposal.Payload"
+        }
+      },
+      "ResultPath": "$.targetOutcome",
+      "Next": "SuccessState"
+    },
+    "SuccessState": {
+      "Type": "Succeed"
+    }
+  }
+}
