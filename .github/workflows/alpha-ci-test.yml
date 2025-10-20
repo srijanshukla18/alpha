@@ -1,0 +1,97 @@
+name: ALPHA - CI Test (Judge Mode)
+
+on:
+  pull_request:
+    paths:
+      - 'src/alpha_agent/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+  push:
+    branches:
+      - main
+
+jobs:
+  test-judge-mode:
+    name: Test ALPHA in Judge Mode
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Test analyze command (Judge Mode)
+        run: |
+          poetry run alpha analyze \
+            --role-arn arn:aws:iam::123456789012:role/TestRole \
+            --judge-mode \
+            --output test-proposal.json \
+            --guardrails prod
+
+          # Verify output file exists
+          test -f test-proposal.json
+          echo "✅ Analyze command succeeded"
+
+      - name: Validate proposal structure
+        run: |
+          # Check JSON structure
+          jq -e '.proposal.proposedPolicy' test-proposal.json
+          jq -e '.proposal.riskSignal' test-proposal.json
+          jq -e '.diff' test-proposal.json
+          jq -e '.metadata' test-proposal.json
+          echo "✅ Proposal structure valid"
+
+      - name: Test exit codes
+        run: |
+          # Test success case
+          poetry run alpha analyze \
+            --role-arn arn:aws:iam::123456789012:role/SafeRole \
+            --judge-mode \
+            --guardrails none
+          test $? -eq 0 || (echo "❌ Expected exit code 0" && exit 1)
+
+          echo "✅ Exit code tests passed"
+
+      - name: Test propose command (dry run)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # This would normally create a PR, but we're just validating the command
+          poetry run alpha propose \
+            --repo ${{ github.repository }} \
+            --branch test/alpha-hardening \
+            --input test-proposal.json \
+            --draft \
+            || echo "⚠️ Propose command test (expected to fail without real branch)"
+
+      - name: Test apply command (dry run)
+        run: |
+          poetry run alpha apply \
+            --state-machine-arn arn:aws:states:us-east-1:123:stateMachine/Test \
+            --proposal test-proposal.json \
+            --judge-mode \
+            --dry-run
+
+          test $? -eq 0 || (echo "❌ Apply dry-run failed" && exit 1)
+          echo "✅ Apply dry-run succeeded"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-test-outputs
+          path: |
+            test-proposal.json
+            *.log

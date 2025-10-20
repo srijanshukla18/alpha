@@ -1,0 +1,31 @@
+{
+  "role_arn": "arn:aws:iam::123456789012:role/DataPipelineProcessor",
+  "current_policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "glue:StartJobRun",
+          "glue:GetJobRun"
+        ],
+        "Resource": "*"
+      }
+    ]
+  },
+  "description": "Data processing pipeline role - resource constraints needed",
+  "tags": {
+    "Environment": "production",
+    "Team": "data-engineering",
+    "Pipeline": "analytics"
+  }
+}

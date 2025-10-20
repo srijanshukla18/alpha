@@ -1,234 +1,277 @@
-# ALPHA Quick Start Guide
+# Quickstart
 
-Get ALPHA running in 5 minutes with this quick start guide.
-
-## 🎯 Choose Your Path
-
-### Path A: Demo Mode (No AWS Account Required) ⚡
-
-**Perfect for**: Hackathon judges, quick demos, testing
+## Prerequisites
 
 ```bash
-# 1. Install dependencies (1 minute)
-poetry install
+# 1. Python version
+python3 --version  # Need 3.11+
 
-# 2. Run the demo (3 minutes)
-poetry run python demo_cli.py
+# 2. AWS credentials configured
+aws sts get-caller-identity  # Should show your account ID
 
-# Done! Watch the simulated workflow
+# 3. Poetry installed
+poetry --version  # If not: curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-**What you'll see**:
-- CloudTrail activity analysis
-- Bedrock AI reasoning
-- Policy diff visualization
-- Staged rollout simulation
-- Success metrics
-
----
-
-### Path B: AWS Deployment (Full Stack) ☁️
-
-**Perfect for**: Production use, full feature testing
+## Install ALPHA
 
 ```bash
-# 1. Prerequisites
-export AWS_PROFILE=your-profile
-export AWS_REGION=us-east-1
-
-# 2. Install dependencies
+# from the repo root
 poetry install
-cd infra && pip install -r requirements.txt
+```
 
-# 3. Bootstrap CDK (first time only)
-cdk bootstrap
+## Option A: Fast Mode (default, no analyzer wait)
 
-# 4. Deploy (5-10 minutes)
-cdk deploy AlphaStack
+Best for CI and live demos. Uses CloudTrail Event History; finishes in seconds.
 
-# 5. Test a role
-poetry run python -m alpha_agent.orchestrator \
-  --analyzer-arn $(aws accessanalyzer list-analyzers --query 'analyzers[0].arn' --output text) \
-  --resource-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/YourTestRole \
-  --cloudtrail-access-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AlphaCloudTrailAccessRole \
-  --cloudtrail-trail-arns $(aws cloudtrail list-trails --query 'Trails[0].TrailARN' --output text) \
+```bash
+export TARGET_ROLE=arn:aws:iam::YOUR_ACCOUNT:role/YourRole
+poetry run alpha analyze \
+  --role-arn "$TARGET_ROLE" \
   --usage-days 7 \
-  --environment sandbox
+  --guardrails sandbox \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf
+
+# Check what was generated
+ls -lh proposal.json cfn-patch.yml tf-patch.tf
+cat proposal.json | head -20
 ```
 
-**Requirements**:
-- AWS CLI configured
-- Bedrock model access (Claude Sonnet 4.5)
-- IAM Access Analyzer enabled
-- CloudTrail enabled
+Notes
+- To force Analyzer mode, add `--no-fast`.
+- If Bedrock model access isn’t enabled, ALPHA falls back and still emits outputs.
 
----
+## Option B: Judge Mode (offline, deterministic)
 
-## 🎬 Quick Demo Walkthrough
-
-### Step 1: Analyze a Role (30 seconds)
+Great for offline demos; no AWS calls; same output every time.
 
 ```bash
-poetry run python demo_cli.py --role-arn arn:aws:iam::123456789012:role/my-app-role
+poetry run alpha analyze \
+  --role-arn arn:aws:iam::123456789012:role/TestRole \
+  --judge-mode \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf
 ```
 
-**Output**:
-```
-Step 1: Analyzing IAM Role Usage
-✓ CloudTrail analysis complete
-  • s3:GetObject         150 invocations
-  • dynamodb:Query       200 invocations
-```
+## Option C: Analyzer Mode (resource‑scoped; slower)
 
-### Step 2: AI Reasoning (40 seconds)
+Provision Access Analyzer + CloudTrail trails, then run without fast mode.
 
-**Output**:
-```
-Step 3: Bedrock AI Reasoning
-AI Analysis:
-  Based on 30 days of telemetry, recommend least-privilege policy
+Required IAM actions: `access-analyzer:StartPolicyGeneration`, `access-analyzer:GetGeneratedPolicy`, `cloudtrail:LookupEvents`, `iam:GetRole*`, `bedrock:InvokeModel`.
 
-Risk Assessment:
-  • Probability of breakage: 5%
-  • Confidence: High (1245 datapoints)
-```
-
-### Step 3: Policy Diff (30 seconds)
-
-**Output**:
-```
-Policy Diff:
-  + Added 5 scoped actions
-  - Removed wildcard (*) action
-  • Privilege reduction: 95%
-```
-
-### Step 4: Staged Rollout (90 seconds)
-
-**Output**:
-```
-Stage 1: Sandbox ✓
-Stage 2: Canary ✓
-Stage 3: Production ✓
-
-🎉 Policy successfully deployed!
-```
-
----
-
-## 🎥 Record a Demo Video
+Run
 
 ```bash
-# 1. Set up terminal recording (Mac)
-brew install asciinema
-
-# 2. Record the demo
-asciinema rec alpha-demo.cast
-poetry run python demo_cli.py
-# Press Ctrl+D when done
-
-# 3. Convert to video
-agg alpha-demo.cast alpha-demo.gif
+poetry run alpha analyze \
+  --role-arn "$TARGET_ROLE" \
+  --no-fast \
+  --usage-days 7 \
+  --guardrails prod \
+  --timeout-seconds 1800 \
+  --output proposal.json
 ```
 
-Or use **QuickTime Player** (Mac) or **OBS Studio** (cross-platform) for screen recording.
+## Bedrock Models (Claude or Nova Pro)
 
----
+Default model is Anthropic Sonnet 4.5. To use Nova Pro:
 
-## 🐛 Troubleshooting
-
-### Issue: `poetry: command not found`
-
-**Solution**:
 ```bash
-pip install poetry
-# Or on Mac:
-brew install poetry
+export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
 ```
 
-### Issue: `ModuleNotFoundError: No module named 'alpha_agent'`
+Enable the chosen model in Bedrock Console → Model access. Grant your user/role `bedrock:InvokeModel` on the inference profile/resource.
 
-**Solution**:
+**Fallback:** If Bedrock is unavailable or not enabled, ALPHA still emits outputs with a conservative risk signal.
+
+## Review the proposal
+
 ```bash
-poetry install  # Make sure you're in the project root
+# See the summary
+cat proposal.json | jq '.proposal.rationale'
+cat proposal.json | jq '.proposal.riskSignal'
+
+# See the new policy
+cat proposal.json | jq '.proposal.proposedPolicy'
+
+# See what changed
+cat proposal.json | jq '.diff'
 ```
 
-### Issue: Demo colors not showing
+## Full Workflow (Analyze → PR → Deploy)
 
-**Solution**:
-```bash
-# Ensure your terminal supports ANSI colors
-export TERM=xterm-256color
-```
+### Prerequisites for Full Flow
 
-### Issue: AWS credentials not configured
+1. **GitHub repo with IAM policies** (Terraform/CloudFormation)
+2. **GITHUB_TOKEN** environment variable
+3. **Step Functions state machine** (deploy with CDK first)
 
-**Solution**:
-```bash
-aws configure
-# Enter your Access Key ID and Secret Access Key
-```
-
----
-
-## 🔍 What to Look For
-
-During the demo, pay attention to:
-
-1. **Usage Analysis**: How many actions were actually used vs granted?
-2. **AI Reasoning**: Claude's risk assessment and confidence score
-3. **Policy Diff**: Before (wildcards) vs After (scoped ARNs)
-4. **Staged Rollout**: Sandbox → Canary → Production progression
-5. **Metrics**: Privilege reduction percentage (typically 90-95%)
-
----
-
-## 📚 Next Steps
-
-After running the quick demo:
-
-1. **Read the Docs**: Check out [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-2. **Deploy to AWS**: Follow [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
-3. **Watch Demo Video**: See [DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)
-4. **Submit to Hackathon**: Use [SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md)
-
----
-
-## 💡 Pro Tips
-
-- **Fast Demo**: Use `--skip-approval` flag to skip the approval step
-- **Custom Role**: Replace the ARN with your actual IAM role
-- **Terminal Recording**: Use a large font (18pt+) for better visibility
-- **Screen Recording**: Record at 1920x1080 for best quality
-
----
-
-## 🎯 Key Metrics to Highlight
-
-When presenting ALPHA, emphasize:
-
-- **95% privilege reduction** on average
-- **0% error rate** with staged rollout
-- **8 minutes** total execution time
-- **5% risk** of breaking changes (AI-assessed)
-- **Zero downtime** during deployment
-
----
-
-## 🚀 Ready to Deploy?
-
-Once you've run the demo and are satisfied, deploy to AWS:
+### Deploy rollout infrastructure (optional)
 
 ```bash
-cd infra/
+cd infra
+npm install
+export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export CDK_DEFAULT_REGION=us-east-1
+cdk bootstrap  # First time only
 cdk deploy AlphaStack
-
-# Get the Step Functions ARN from outputs
-aws stepfunctions list-state-machines --query 'stateMachines[?name==`alpha-policy-remediation`].stateMachineArn' --output text
 ```
 
----
+Creates: Step Functions state machine for staged rollouts, Lambdas (guardrails, rollout), DynamoDB approvals, CloudWatch dashboards.
 
-**Need help?** Check the full [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) or open an issue on GitHub.
+**Save the state machine ARN from CDK output:**
 
-**Good luck with your demo! 🎉**
+```bash
+export STATE_MACHINE_ARN="arn:aws:states:us-east-1:YOUR_ACCOUNT:stateMachine/AlphaRollout"
+```
+
+### Full Workflow
+
+```bash
+# 1. Analyze
+poetry run alpha analyze \
+  --role-arn "$TARGET_ROLE" \
+  --usage-days 30 \
+  --output proposal.json \
+  --guardrails prod
+
+# 2. Create GitHub PR (if you have a repo)
+export GITHUB_TOKEN=ghp_YOUR_TOKEN
+poetry run alpha propose \
+  --repo YOUR_ORG/YOUR_INFRA_REPO \
+  --branch "alpha/harden-$(date +%s)" \
+  --input proposal.json
+
+# 3. Apply (dry-run first!)
+poetry run alpha apply \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
+  --proposal proposal.json \
+  --dry-run
+
+# 4. Actually apply (after reviewing dry-run output)
+poetry run alpha apply \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
+  --proposal proposal.json \
+  --environment sandbox \
+  --canary 10
+```
+
+## Optional: Step Functions rollout demo
+
+Deploy a minimal state machine (all Pass states) using the provided definition (role must trust `states.amazonaws.com` and have Step Functions execution permissions):
+
+```bash
+aws iam create-role \
+  --role-name AlphaStepFunctionsRole \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"states.amazonaws.com"},"Action":"sts:AssumeRole"}]}' || true
+
+aws iam attach-role-policy \
+  --role-name AlphaStepFunctionsRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess || true
+
+aws stepfunctions create-state-machine \
+  --name AlphaMinimalRollout \
+  --definition file://workflows/minimal_state_machine.asl.json \
+  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/AlphaStepFunctionsRole
+
+export STATE_MACHINE_ARN=arn:aws:states:us-east-1:YOUR_ACCOUNT:stateMachine:AlphaMinimalRollout
+
+poetry run alpha apply \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
+  --proposal proposal.json \
+  --dry-run
+
+poetry run alpha apply \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
+  --proposal proposal.json
+```
+
+`alpha apply` defaults to `--require-approval False`. Add `--require-approval --approval-table <table>` once approvals are wired.
+
+## Troubleshooting
+
+### "Access Analyzer not found" (Analyzer mode)
+Create analyzer first:
+`aws accessanalyzer create-analyzer --analyzer-name default --type ACCOUNT --region us-east-1`
+
+### "Bedrock access denied"
+Enable the specific model (Anthropic/Nova) in Bedrock → Model access; ensure your principal has `bedrock:InvokeModel`.
+
+### "No CloudTrail events found"
+The role may have no recent activity. Try `--usage-days 1`, or use judge mode.
+
+### "Exit code 2 (risky)"
+Bedrock estimated >10% break probability. Review:
+
+```bash
+cat proposal.json | jq '.proposal.riskSignal'
+cat proposal.json | jq '.proposal.remediationNotes'
+```
+
+### "Exit code 3 (guardrail violation)"
+Generated policy contains blocked actions. Review:
+
+```bash
+cat proposal.json | jq '.proposal.guardrailViolations'
+```
+
+Options:
+- Use less strict preset: `--guardrails sandbox` or `--guardrails none`
+- Suppress specific actions: `--suppress-actions iam:PassRole`
+
+## Cost Estimate
+
+**Judge mode:** $0 (no AWS calls)
+
+**Real mode per role:**
+- IAM Access Analyzer: ~$0.20 (GeneratePolicy API)
+- Bedrock Claude Sonnet 4.5: ~$0.03-0.05 (input: 2K tokens, output: 1K tokens)
+- CloudTrail: Free (LookupEvents API)
+- **Total: ~$0.25 per role analysis**
+
+**Infrastructure (if deployed):**
+- Step Functions: $0.025 per 1000 state transitions
+- Lambda: Free tier covers most usage
+- DynamoDB: On-demand, ~$0.01/month for approval table
+- **Total: <$5/month even with heavy usage**
+
+## Quick Reference
+
+```bash
+# Judge mode (offline, instant, $0)
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode
+
+# Real analysis (30-90s, ~$0.25)
+poetry run alpha analyze --role-arn "$ROLE_ARN" --output proposal.json
+
+# With all outputs
+poetry run alpha analyze \
+  --role-arn "$ROLE_ARN" \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf
+
+# Less strict guardrails
+poetry run alpha analyze --role-arn "$ROLE_ARN" --guardrails sandbox
+
+# Exclude services
+poetry run alpha analyze --role-arn "$ROLE_ARN" --exclude-services ec2,rds
+
+# Create PR
+poetry run alpha propose --repo org/repo --branch harden/role --input proposal.json
+
+# Dry-run deployment
+poetry run alpha apply --state-machine-arn "$ARN" --proposal proposal.json --dry-run
+```
+
+## Next Steps
+
+1. **Try judge mode first** to learn the tool
+2. **Analyze a non-critical role** in your account
+3. **Review the proposal** before applying anything
+4. **Deploy infrastructure** only if you want full automation
+5. **Use `--dry-run`** on `alpha apply` until you trust it
+
+**Don't apply policies blindly. Review the diff first.**

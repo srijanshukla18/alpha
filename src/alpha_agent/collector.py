@@ -33,21 +33,24 @@ def start_policy_generation(
     client = client or _build_access_analyzer_client()
     try:
         start_time = datetime.now(timezone.utc) - timedelta(days=request.usage_period_days)
+        end_time = datetime.now(timezone.utc)
+        # AWS requires datetime in specific format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
+        start_time_str = start_time.strftime('%Y-%m-%dT%H:%M:%S') + '.000Z'
+        end_time_str = end_time.strftime('%Y-%m-%dT%H:%M:%S') + '.000Z'
         response = client.start_policy_generation(
             clientToken=f"{request.resource_arn}:{int(time.time())}",
             cloudTrailDetails={
                 "accessRole": request.cloudtrail_access_role_arn,
-                "endTime": datetime.now(timezone.utc),
-                "startTime": start_time,
+                "endTime": end_time_str,
+                "startTime": start_time_str,
                 "trails": [
-                    {"cloudTrailArn": arn, "regions": [], "allRegions": False}
+                    {"cloudTrailArn": arn, "regions": [], "allRegions": True}
                     for arn in request.cloudtrail_trail_arns
                 ],
             },
             policyGenerationDetails={
                 "principalArn": request.resource_arn,
             },
-            analyzerArn=request.analyzer_arn,
         )
     except ClientError as err:
         raise PolicyGenerationError(f"Unable to start policy generation: {err}") from err
@@ -61,7 +64,7 @@ def wait_for_policy_json(
     job_id: str,
     client: Optional[boto3.client] = None,
     poll_interval: int = 10,
-    timeout_seconds: int = 600,
+    timeout_seconds: int = 1800,
 ) -> Dict:
     """
     Poll for job completion and return the generated policy JSON.
@@ -104,7 +107,7 @@ def generate_policy(
     request: PolicyGenerationRequest,
     client: Optional[boto3.client] = None,
     poll_interval: int = 10,
-    timeout_seconds: int = 600,
+    timeout_seconds: int = 1800,
 ) -> PolicyDocument:
     """Convenience wrapper to kick off and retrieve the policy document."""
     client = client or _build_access_analyzer_client()

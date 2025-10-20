@@ -1,0 +1,41 @@
+{
+  "Comment": "ALPHA minimal staged rollout",
+  "StartAt": "RecordProposal",
+  "States": {
+    "RecordProposal": {
+      "Type": "Pass",
+      "ResultPath": "$.audit",
+      "Result": {
+        "message": "Policy proposal received"
+      },
+      "Next": "Sandbox"
+    },
+    "Sandbox": {
+      "Type": "Pass",
+      "ResultPath": "$.sandbox",
+      "Result": {
+        "stage": "sandbox",
+        "status": "skipped"
+      },
+      "Next": "Canary"
+    },
+    "Canary": {
+      "Type": "Pass",
+      "ResultPath": "$.canary",
+      "Result": {
+        "stage": "canary",
+        "status": "skipped"
+      },
+      "Next": "Target"
+    },
+    "Target": {
+      "Type": "Pass",
+      "ResultPath": "$.target",
+      "Result": {
+        "stage": "target",
+        "status": "complete"
+      },
+      "End": true
+    }
+  }
+}

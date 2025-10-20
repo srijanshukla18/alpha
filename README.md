@@ -1,281 +1,311 @@
 # ALPHA – Autonomous Least-Privilege Hardening Agent
 
 ![AWS AI Agent Global Hackathon](https://img.shields.io/badge/AWS-AI_Agent_Hackathon-FF9900?style=for-the-badge&logo=amazon-aws)
-![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python)
+![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
 
-**ALPHA** is an AWS-native AI agent that automatically discovers over-privileged IAM roles, proposes least-privilege policies using real CloudTrail usage data, and executes staged rollouts with human approval. Built for the **AWS AI Agent Global Hackathon 2025**, ALPHA combines **Amazon Bedrock AgentCore**, **IAM Access Analyzer**, and **AWS Step Functions** to deliver autonomous IAM security hardening.
+ALPHA is an AWS‑native AI agent that right‑sizes IAM policies from real usage. It supports two analysis paths:
+- ⚡ Fast Mode (default): uses CloudTrail Event History for a best‑effort policy in seconds (no Access Analyzer job)
+- ☁️ Analyzer Mode (optional): uses IAM Access Analyzer for resource‑scoped policies (slower)
 
-## 🎯 Problem Statement
+Bedrock reasoning (Anthropic Claude or Amazon Nova Pro) provides rationale and risk; guardrails enforce hard constraints. CLI‑first, CI‑friendly.
 
-Organizations struggle with IAM privilege sprawl:
-- Roles granted `AdminAccess` or wildcard (`*`) permissions "just to make it work"
-- 95% of granted privileges never used in production
-- Manual policy audits are time-consuming and error-prone
-- Fear of breaking production prevents remediation
+## 30‑Second Quickstart (fast mode by default)
 
-**ALPHA solves this with autonomous, AI-powered policy hardening.**
-
-## ✨ Key Features
-
-### 🔍 Usage-Aware Policy Generation
-Leverages **IAM Access Analyzer** to analyze 30+ days of CloudTrail activity and generate policies based on *actual* usage, not guesswork.
-
-### 🧠 Bedrock AI Reasoning
-Uses **Claude Sonnet 4.5 on Amazon Bedrock** (Anthropic's most intelligent model) to:
-- Analyze usage patterns and propose human-readable policies
-- Assess risk of breaking changes (with confidence scores)
-- Generate remediation guidance for edge cases
-
-### 🛡️ Organizational Guardrails
-Enforces security policies automatically:
-- Block wildcard actions in production
-- Require condition keys (e.g., MFA, IP restrictions)
-- Disallow high-risk services (configurable)
-
-### 👥 Human-in-the-Loop Approval
-- Slack notifications with one-click approval
-- DynamoDB-backed audit trail
-- Optional auto-approval for low-risk changes
-
-### 🚀 Staged Rollout with Auto-Rollback
-- **Sandbox → Canary → Production** deployment
-- CloudWatch metrics monitoring at each stage
-- Automatic rollback on error threshold breach
-
-### 🤖 AgentCore Integration
-Exposes tools via **Amazon Bedrock AgentCore** for fully autonomous operation:
-- Policy generation tool
-- Reasoning tool
-- Approval workflow tool
-- Rollout execution tool
-- (Optional) Nova Act browser actions
-
-## 🏗️ Architecture
-
-```
-User → API Gateway → Step Functions → Lambda Functions → AWS Services
-                          ↓                                    ↓
-                    AgentCore Runtime              IAM Access Analyzer
-                          ↓                         Amazon Bedrock
-                     DynamoDB                       CloudWatch
+```bash
+poetry install
+poetry run alpha analyze \
+  --role-arn arn:aws:iam::123456789012:role/YourRole \
+  --guardrails sandbox \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture diagrams.
+Notes
+- Fast mode is on by default. Use `--no-fast` to force Access Analyzer.
+- To use Nova Pro: set `ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`.
+- No Bedrock access? ALPHA falls back and still produces outputs.
 
-## 📦 Tech Stack
+## Problem
 
-- **Python 3.11+**: Core agent logic
-- **Amazon Bedrock**: Claude Sonnet 4.5 for AI reasoning
-- **IAM Access Analyzer**: CloudTrail-powered policy generation
-- **AWS Step Functions**: Workflow orchestration
-- **AWS Lambda**: Serverless compute
-- **Amazon DynamoDB**: Approval tracking
-- **Amazon Bedrock AgentCore**: Agent runtime (optional)
-- **AWS CDK**: Infrastructure as Code
+- 95% of IAM permissions never used in production
+- Roles have `AdminAccess` or `*` wildcards
+- Manual policy audits take weeks
+- Fear of breaking prod prevents fixes
 
-## 📂 Repository Structure
+## Solution
+
+**Three commands. Full automation.**
+
+### 1. `alpha analyze` - Generate Policy
+```bash
+alpha analyze \
+  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/YourRole \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf \
+  --guardrails prod
+```
+
+Behind the scenes
+- Fast: CloudTrail Event History → best‑effort actions (Resource "*")
+- Analyzer: Access Analyzer → resource‑scoped actions from trails
+- Bedrock (Claude or Nova) adds rationale/risk; guardrails enforce org rules
+
+Exit codes: 0=safe, 1=error, 2=risky (>10%), 3=guardrail violation
+
+### 2. `alpha propose` - Create PR
+```bash
+export GITHUB_TOKEN=ghp_your_token
+alpha propose --repo org/infra --branch harden/role --input proposal.json
+```
+
+Auto-generates PR with:
+- Risk assessment + confidence score
+- Before/after policy diff
+- Privilege reduction metrics (e.g., "85% reduction: 2,847 → 5 actions")
+
+### 3. `alpha apply` - Staged Rollout
+```bash
+alpha apply \
+  --state-machine-arn arn:aws:states:us-east-1:123:stateMachine/Alpha \
+  --proposal proposal.json \
+  --environment prod \
+  --canary 10
+```
+
+**Step Functions workflow:**
+1. Validate policy + check approval (DynamoDB)
+2. Canary deploy (10% traffic)
+3. Monitor CloudWatch (watch for AccessDenied spikes)
+4. Auto-rollback if errors > 0.1%, else promote to 100%
+
+## Key Features
+
+- CLI‑first with CI exit codes (0/1/2/3)
+- Fast mode default; Analyzer optional
+- Bedrock reasoning (Claude or Nova Pro) with graceful fallback
+- Guardrails presets (none/sandbox/prod) + custom excludes/suppression
+- Multi‑format outputs: JSON, CloudFormation YAML, Terraform HCL, PR markdown
+- Judge Mode for offline demos (deterministic)
+
+## Installation
+
+```bash
+# Poetry (recommended)
+git clone https://github.com/your-org/alpha.git && cd alpha && poetry install
+
+# pipx (when published to PyPI)
+pipx install alpha-agent
+```
+
+## CLI Reference
+
+### `analyze` Options
+```bash
+--role-arn              # IAM role ARN (required)
+--usage-days 30         # CloudTrail analysis window
+--output proposal.json  # Save proposal JSON
+--output-cloudformation cfn.yml  # CloudFormation patch
+--output-terraform tf.tf         # Terraform patch
+--guardrails prod       # none/sandbox/prod
+--exclude-services ec2,rds       # Skip services
+--suppress-actions s3:DeleteBucket  # Block specific actions
+--baseline-policy-name Current   # Diff against existing policy
+--judge-mode            # Offline mock mode (no AWS)
+--no-fast               # Use Access Analyzer instead of fast mode
+--timeout-seconds 1800  # Wait budget for Access Analyzer path
+--bedrock-model us.amazon.nova-pro-v1:0  # Override Bedrock model
+```
+
+### `propose` Options
+```bash
+--repo org/infra        # GitHub repository
+--branch harden/role    # Branch name
+--input proposal.json   # Proposal from analyze
+--base main             # Base branch
+--title "Custom title"  # Override auto-generated title
+--draft                 # Create as draft PR
+--github-token ghp_xxx  # Or set GITHUB_TOKEN env
+```
+
+### `apply` Options
+```bash
+--state-machine-arn arn:...  # Step Functions ARN
+--proposal proposal.json     # Proposal file
+--environment prod           # sandbox/canary/prod
+--canary 10                  # Canary percentage
+--rollback-threshold "AccessDenied>0.1%"
+--require-approval           # Check DynamoDB approval
+--approval-table Approvals   # DynamoDB table name
+--dry-run                    # Simulate without executing
+--judge-mode                 # Mock execution
+```
+
+## Guardrails
+
+none: no restrictions (sandbox)
+sandbox: blocks `iam:PassRole`
+prod: blocks `iam:*`, `sts:AssumeRole`; requires `StringEquals: { aws:RequestedRegion: us-east-1 }`; disallows `iam`, `organizations`
+
+Custom:
+```bash
+--exclude-services ec2,lambda --suppress-actions dynamodb:DeleteTable
+```
+
+Violations trigger exit code 3 and block deployment.
+
+## GitHub Action
+
+```yaml
+- uses: your-org/alpha@v1
+  with:
+    mode: analyze
+    role_arn: arn:aws:iam::123:role/MyRole
+    guardrails: prod
+    output_path: proposal.json
+
+- name: Block risky changes
+  if: steps.analyze.outputs.exit_code >= 2
+  run: exit 1
+```
+
+See `.github/workflows/` for complete examples (analyze on PR, apply on merge).
+
+## Architecture (high‑level)
+
+- Fast collector: CloudTrail Event History → best‑effort action set
+- Analyzer collector (optional): Access Analyzer → resource‑scoped actions from trails
+- Reasoning: Bedrock (Claude or Nova) → rationale, risk, notes
+- Guardrails: enforce org constraints; gate CI with exit codes
+- Outputs: JSON, CFN, TF; optional PR creation; optional staged rollout via Step Functions
+
+## Examples
+
+```bash
+# Try offline with judge mode
+alpha analyze --role-arn arn:aws:iam::123:role/OverprivilegedAdmin --judge-mode
+
+# Real AWS analysis with all outputs
+alpha analyze \
+  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/YourRole \
+  --output proposal.json \
+  --output-cloudformation cfn-patch.yml \
+  --output-terraform tf-patch.tf
+
+# Full workflow
+alpha analyze --role-arn <ARN> --output proposal.json
+alpha propose --repo org/repo --branch harden/role --input proposal.json
+alpha apply --state-machine-arn <ARN> --proposal proposal.json --dry-run
+```
+
+Sample inputs in `examples/inputs/` (admin role, CI runner, data pipeline).
+
+## Testing
+
+```bash
+./test_judge_mode.sh  # End-to-end validation (no AWS creds needed)
+```
+
+Validates all commands, guardrails, outputs, and judge mode determinism.
+
+## Deployment (optional)
+
+CDK stack under `infra/` provisions the staged rollout system (Step Functions, Lambdas, DynamoDB, CloudWatch). For analyzer mode, also provision an Access Analyzer and CloudTrail trails. See ARCHITECTURE.md for details.
+
+### Minimal Step Functions workflow (quick demo)
+
+```bash
+# create an IAM role for Step Functions if you don't already have one
+# (trust states.amazonaws.com; attach AmazonStepFunctionsFullAccess for quick demos)
+aws iam create-role \
+  --role-name AlphaStepFunctionsRole \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"states.amazonaws.com"},"Action":"sts:AssumeRole"}]}' || true
+
+aws iam attach-role-policy \
+  --role-name AlphaStepFunctionsRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess || true
+
+export SFN_ROLE_ARN=arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AlphaStepFunctionsRole
+
+# create a minimal state machine (all Pass states)
+aws stepfunctions create-state-machine \
+  --name AlphaMinimalRollout \
+  --definition file://workflows/minimal_state_machine.asl.json \
+  --role-arn "$SFN_ROLE_ARN"
+
+# capture the ARN that is returned and use it with alpha apply
+export STATE_MACHINE_ARN=arn:aws:states:us-east-1:...:stateMachine:AlphaMinimalRollout
+
+poetry run alpha apply \
+  --state-machine-arn "$STATE_MACHINE_ARN" \
+  --proposal real-fast-proposal.json \
+  --dry-run
+```
+
+Real runs default to `--require-approval False`; pass `--require-approval --approval-table <table>` to enforce approvals.
+
+## Repository Structure
 
 ```
 alpha/
-├── src/alpha_agent/          # Core agent modules
-│   ├── agentcore.py          # AgentCore tool integrations
-│   ├── approvals.py          # DynamoDB approval store
-│   ├── collector.py          # IAM Access Analyzer client
-│   ├── diff.py               # Policy diff computation
-│   ├── github.py             # GitHub PR creation
-│   ├── guardrails.py         # Policy guardrail enforcer
-│   ├── models.py             # Pydantic data models
-│   ├── notifications.py      # Slack webhook client
-│   ├── orchestrator.py       # Main CLI orchestrator
-│   ├── reasoning.py          # Bedrock reasoning client
-│   └── rollout.py            # Staged rollout executor
-│
-├── lambdas/                  # Lambda function handlers
-│   ├── generate_policy/      # Access Analyzer invocation
-│   ├── bedrock_reasoner/     # Bedrock Claude invocation
-│   ├── guardrail/            # Guardrail enforcement
-│   ├── approval_checker/     # DynamoDB approval query
-│   ├── rollout/              # Policy rollout execution
-│   └── agentcore_runtime/    # AgentCore entry point
-│
-├── infra/                    # AWS CDK infrastructure
-│   ├── app.py                # CDK app entry point
-│   ├── lib/alpha_stack.py    # Stack definition
-│   └── requirements.txt      # CDK dependencies
-│
-├── docs/                     # Documentation
-│   ├── ARCHITECTURE.md       # System architecture
-│   ├── DEPLOYMENT_GUIDE.md   # Deployment instructions
-│   ├── DEMO_SCRIPT.md        # Video demo script
-│   └── agentcore_prompts.md  # Bedrock prompts
-│
-├── workflows/
-│   └── state_machine.asl.json # Step Functions definition
-│
-├── demo_cli.py               # Interactive demo (no AWS needed)
-├── pyproject.toml            # Python package config
-├── hackathon.md              # Hackathon requirements
-└── idea.md                   # Original design doc
+├── src/alpha_agent/
+│   ├── cli/              # CLI commands (analyze, propose, apply)
+│   │   ├── formatters.py # JSON, CFN, TF, PR, terminal outputs
+│   │   └── judge_mode.py # Mock data for offline demos
+│   ├── main.py           # CLI entrypoint
+│   ├── reasoning.py      # Bedrock reasoning (Claude or Nova)
+│   ├── collector.py      # Access Analyzer collector (optional)
+│   ├── fast_collector.py # Fast CloudTrail Event History collector (default)
+│   ├── guardrails.py     # Security constraints
+│   ├── diff.py           # Policy diffing
+│   └── models.py         # Pydantic schemas
+├── action/action.yml     # GitHub Action composite
+├── .github/workflows/    # Example workflows
+├── examples/             # Sample inputs/outputs
+├── lambdas/              # Lambda handlers
+├── infra/                # CDK infrastructure
+├── workflows/            # Step Functions definitions (minimal demo, legacy)
+└── test_judge_mode.sh    # E2E test script
 ```
 
-## 🚀 Quick Start
+## Demo & Hackathon
 
-### Option 1: Demo Mode (No AWS Credentials)
+Judge Mode enables fully offline demos. For a live demo, prefer fast mode to avoid Access Analyzer latency. For hackathon submission text, see `hackathon.md` (rules) and `idea.md` (concept). 
 
-Run a simulated demo locally with colorful terminal output:
+Run the guided demo:
 
 ```bash
-# Install dependencies
-poetry install
-
-# Run interactive demo
-poetry run python demo_cli.py --role-arn arn:aws:iam::123456789012:role/test-role
+python3 demo_repl.py --role-arn "$ROLE_ARN" --state-machine-arn "$STATE_MACHINE_ARN"
 ```
 
-This simulates the full ALPHA workflow in ~3 minutes with no AWS API calls.
+**Built for:** AWS AI Agent Global Hackathon 2025
+**Category:** Best Bedrock AgentCore Implementation
 
-### Option 2: Deploy to AWS (Production)
+**Why ALPHA wins:**
+1. **Production-ready** - Not a toy, ships as CLI + GitHub Action
+2. **Judge Mode** - Offline deterministic demos without AWS
+3. **Bedrock reasoning** - Claude Sonnet 4.5 adds edge-case permissions, assesses risk
+4. **Real AWS integration** - Access Analyzer (CloudTrail analysis) + Step Functions (staged rollout)
+5. **Multi-format outputs** - CFN, TF patches ready to paste into IaC
+6. **Guardrails** - Hard constraints (can't be bypassed by LLM)
+7. **Comprehensive** - CLI, Action, infra, docs, tests
 
-Deploy the full infrastructure to your AWS account:
+Use this README, QUICKSTART.md, and docs/ARCHITECTURE.md for submission content.
 
-```bash
-# 1. Configure AWS credentials
-export AWS_PROFILE=your-profile
-export AWS_REGION=us-east-1
+### AgentCore (optional)
 
-# 2. Install dependencies
-poetry install
-cd infra && pip install -r requirements.txt
+- Tools exposed in `src/alpha_agent/agentcore.py`: generate policy, reason, enforce guardrails, diff, approvals, rollout, GitHub PR
+- Register with Amazon Bedrock AgentCore Gateway using `get_agentcore_tool_definitions()`
+- Handler Lambda at `lambdas/agentcore_runtime/handler.py` wires the tools; prompts can be defined dynamically (see code)
+- Great for the “agentic” judging track; CLI remains the primary interface
 
-# 3. Bootstrap CDK (first time only)
-cdk bootstrap
+## License
 
-# 4. Deploy stack
-cdk deploy AlphaStack
-
-# 5. Run a live analysis
-poetry run python -m alpha_agent.orchestrator \
-  --analyzer-arn arn:aws:access-analyzer:us-east-1:123456789012:analyzer/alpha-analyzer \
-  --resource-arn arn:aws:iam::123456789012:role/ExampleRole \
-  --cloudtrail-access-role-arn arn:aws:iam::123456789012:role/AlphaCloudTrailAccessRole \
-  --cloudtrail-trail-arns arn:aws:cloudtrail:us-east-1:123456789012:trail/alpha-trail \
-  --usage-days 30 \
-  --environment sandbox \
-  --report-output proposal.json
-```
-
-See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for detailed instructions.
-
-## 🎬 Demo Video
-
-Watch ALPHA in action:
-
-[![ALPHA Demo](https://img.shields.io/badge/▶-Watch_Demo-red?style=for-the-badge&logo=youtube)](https://youtu.be/your-video-id)
-
-- **0:00** - Problem overview
-- **0:30** - CloudTrail analysis
-- **1:00** - Bedrock reasoning
-- **1:30** - Policy diff & approval
-- **2:00** - Staged rollout
-- **2:30** - Success metrics
-
-See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the full demo script.
-
-## 📊 Measurable Impact
-
-For a typical enterprise organization:
-
-| Metric                    | Before ALPHA        | After ALPHA         |
-|---------------------------|---------------------|---------------------|
-| Average privileges/role   | 500+ actions (*)    | 5-10 scoped actions |
-| Privilege reduction       | N/A                 | 90-95%              |
-| Policy audit time         | 2-4 hours (manual)  | 8 minutes (auto)    |
-| Production incidents      | High risk           | Near-zero (staged)  |
-| Compliance audit cost     | $50K+/year          | <$10K/year          |
-
-## 🏆 Hackathon Alignment
-
-ALPHA addresses all **AWS AI Agent Global Hackathon** requirements:
-
-### ✅ What to Build
-- [x] **LLM on Bedrock/SageMaker**: Claude Sonnet 4.5 on Bedrock
-- [x] **AgentCore Primitive**: Exposes 8 tools via AgentCore Gateway
-- [x] **Reasoning**: Claude analyzes policies and assesses risk
-- [x] **Autonomous Operation**: Fully automated workflow with optional human approval
-- [x] **External Integrations**: IAM Access Analyzer, Slack, GitHub
-
-### 🏅 Prize Categories Targeted
-1. **Best Amazon Bedrock AgentCore Implementation**: Full tool suite + memory
-2. **Best Amazon Bedrock Application**: Core reasoning with Claude Sonnet 4.5
-3. **Best Amazon Nova Act Integration** (optional): Browser actions for console demo
-
-### 📏 Judging Criteria
-
-| Criterion                  | Score | Evidence                                |
-|----------------------------|-------|-----------------------------------------|
-| **Potential Value (20%)**  | ⭐⭐⭐⭐⭐ | Reduces attack surface by 90%+          |
-| **Creativity (10%)**       | ⭐⭐⭐⭐⭐ | Novel use of Access Analyzer + AI       |
-| **Technical Execution (50%)** | ⭐⭐⭐⭐⭐ | Production-ready, well-architected      |
-| **Functionality (10%)**    | ⭐⭐⭐⭐⭐ | End-to-end workflow with rollback       |
-| **Demo Presentation (10%)** | ⭐⭐⭐⭐⭐ | Clear 3-min video + live demo ready     |
-
-## 🛠️ Development
-
-### Running Tests
-
-```bash
-# Unit tests
-poetry run pytest tests/
-
-# Integration tests (requires AWS credentials)
-poetry run pytest tests_integ/
-
-# Type checking
-poetry run mypy src/
-```
-
-### Code Quality
-
-```bash
-# Format code
-poetry run black src/ lambdas/
-
-# Lint
-poetry run pylint src/
-
-# Security scan
-poetry run bandit -r src/
-```
-
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- **AWS**: For hosting the AI Agent Global Hackathon and providing Bedrock/AgentCore
-- **Anthropic**: For the Claude Sonnet 4.5 model
-- **IAM Access Analyzer Team**: For the policy generation API
-
-## 📧 Contact
-
-- **Team**: [Your Name]
-- **Email**: your.email@example.com
-- **GitHub**: [@your-username](https://github.com/your-username)
-- **Hackathon**: [AWS AI Agent Global Hackathon 2025](https://aws-ai-agent-hackathon.devpost.com/)
-
-## 🚦 Project Status
-
-- [x] Core agent logic implemented
-- [x] Lambda functions deployed
-- [x] Step Functions orchestration
-- [x] AgentCore integration
-- [x] Demo CLI working
-- [x] Documentation complete
-- [ ] Demo video recorded
-- [ ] Hackathon submission
+MIT
 
 ---
 
-**Built with ❤️ for the AWS AI Agent Global Hackathon 2025**
+**Stop copying IAM policies from Stack Overflow. Let AI do the work.**
+Built with ❤️ for AWS AI Agent Global Hackathon • [GitHub](https://github.com/your-org/alpha) • [Demo Video](#)

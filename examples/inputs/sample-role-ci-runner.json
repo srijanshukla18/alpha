@@ -1,0 +1,26 @@
+{
+  "role_arn": "arn:aws:iam::123456789012:role/GitHubActionsCIRunner",
+  "current_policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:*",
+          "dynamodb:*",
+          "lambda:*",
+          "logs:*",
+          "iam:PassRole",
+          "ecr:*"
+        ],
+        "Resource": "*"
+      }
+    ]
+  },
+  "description": "CI/CD role for GitHub Actions - overly broad permissions",
+  "tags": {
+    "Environment": "production",
+    "Team": "devops",
+    "Purpose": "ci-cd"
+  }
+}

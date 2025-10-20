@@ -1,0 +1,89 @@
+{
+  "proposal": {
+    "proposedPolicy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:ListBucket",
+            "s3:PutObject"
+          ],
+          "Resource": [
+            "arn:aws:s3:::app-data-bucket",
+            "arn:aws:s3:::app-data-bucket/*"
+          ],
+          "Condition": {
+            "StringEquals": {
+              "aws:PrincipalOrgID": "o-abc123xyz"
+            }
+          }
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "dynamodb:GetItem",
+            "dynamodb:Query",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem"
+          ],
+          "Resource": [
+            "arn:aws:dynamodb:us-east-1:123456789012:table/UserSessions",
+            "arn:aws:dynamodb:us-east-1:123456789012:table/UserSessions/index/*"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "logs:CreateLogGroup",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents"
+          ],
+          "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/app-*"
+        }
+      ]
+    },
+    "rationale": "Based on 30 days of CloudTrail analysis, this role exclusively accesses S3 (app-data-bucket), DynamoDB (UserSessions table), and CloudWatch Logs. The original policy granted full AWS access (*:*) but actual usage is limited to these three services. Reduced from 1000+ actions to 10 specific actions.",
+    "riskSignal": {
+      "probabilityOfBreak": 0.05,
+      "rationale": "Very low risk. All observed actions in the past 30 days are covered by the new policy. No edge cases or infrequent access patterns detected. Confidence: 95%"
+    },
+    "guardrailViolations": [],
+    "remediationNotes": [
+      "Consider adding resource tags to further scope S3 and DynamoDB access",
+      "Enable CloudTrail Insights for anomaly detection during rollout",
+      "Schedule policy review after 90 days to ensure no new access patterns emerge"
+    ]
+  },
+  "diff": {
+    "addedActions": [],
+    "removedActions": [
+      "cloudformation:*",
+      "ec2:*",
+      "iam:*",
+      "rds:*",
+      "lambda:*",
+      "... (990+ more actions)"
+    ],
+    "changedConditions": {
+      "added": [
+        "StringEquals:aws:PrincipalOrgID"
+      ],
+      "removed": []
+    },
+    "resourceScopeChanges": {
+      "before": "*",
+      "after": "3 specific resources"
+    }
+  },
+  "metadata": {
+    "role_arn": "arn:aws:iam::123456789012:role/OverprivilegedAdminRole",
+    "usage_days": 30,
+    "guardrails": "prod",
+    "mode": "judge",
+    "exit_code": 0,
+    "generated_at": "2025-10-18T10:30:00Z",
+    "alpha_version": "1.0.0"
+  }
+}

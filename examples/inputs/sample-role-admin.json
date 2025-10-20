@@ -1,0 +1,19 @@
+{
+  "role_arn": "arn:aws:iam::123456789012:role/OverprivilegedAdminRole",
+  "current_policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "*",
+        "Resource": "*"
+      }
+    ]
+  },
+  "description": "Legacy admin role with full AWS access - needs hardening",
+  "tags": {
+    "Environment": "production",
+    "Team": "platform",
+    "ManagedBy": "terraform"
+  }
+}
