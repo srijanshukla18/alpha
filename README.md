@@ -240,11 +240,37 @@ export STATE_MACHINE_ARN=arn:aws:states:us-east-1:...:stateMachine:AlphaMinimalR
 
 poetry run alpha apply \
   --state-machine-arn "$STATE_MACHINE_ARN" \
-  --proposal real-fast-proposal.json \
+  --proposal proposal.json \
   --dry-run
 ```
 
 Real runs default to `--require-approval False`; pass `--require-approval --approval-table <table>` to enforce approvals.
+
+### AgentCore Runtime (optional)
+
+You can deploy ALPHA primitives as managed AgentCore Runtime endpoints:
+
+Entrypoint module: `src/alpha_agent/agentcore_entrypoint.py`
+
+Single entrypoint with action dispatch:
+- `action: "enforce_policy_guardrails"` → returns `sanitized_policy` + `violations`
+- `action: "analyze_fast_policy"` → returns best‑effort policy from CloudTrail Event History
+
+Quick deploy (using AgentCore Starter Toolkit):
+
+```bash
+# 0) One-time project bootstrap (recommended)
+./scripts/bootstrap_agentcore.sh agentcore_deploy
+
+# 1) Configure and launch (from repo root, using the project directory)
+uv --directory agentcore_deploy run agentcore configure -e src/alpha_agent/agentcore_entrypoint.py
+uv --directory agentcore_deploy run agentcore launch
+uv --directory agentcore_deploy run agentcore status
+
+# 2) Invoke examples (from repo root)
+uv --directory agentcore_deploy run agentcore invoke '{"action":"analyze_fast_policy","roleArn":"'$ROLE_ARN'","usageDays":1,"region":"'$AWS_REGION'"}'
+uv --directory agentcore_deploy run agentcore invoke '{"action":"enforce_policy_guardrails","policy":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]},"preset":"prod"}'
+```
 
 ## Repository Structure
 

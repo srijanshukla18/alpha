@@ -69,10 +69,12 @@ Example PolicyDocument
 
 ## AgentCore (optional)
 
-- `src/alpha_agent/agentcore.py` exposes tools for generate → reason → guardrail → diff → approvals → rollout → GitHub PR
-- `get_agentcore_tool_definitions()` returns JSON schemas for registration with Amazon Bedrock AgentCore Gateway
-- `lambdas/agentcore_runtime/handler.py` wires tool invocations for hosted agents
-- Use when demonstrating agent orchestration; CLI remains the primary execution path
+- Entrypoint for Runtime: `src/alpha_agent/agentcore_entrypoint.py`
+  - `enforce_policy_guardrails(payload)` → sanitized policy + violations
+  - `analyze_fast_policy(payload)` → best‑effort policy via CloudTrail Event History
+- Tools library (optional): `src/alpha_agent/agentcore.py` defines AgentCoreTools for broader orchestration
+- Hosted handler (optional): `lambdas/agentcore_runtime/handler.py` for managed tool orchestration
+- Use Runtime entrypoint to deploy minimal, production‑friendly endpoints quickly
 
 ## Repo Pointers
 

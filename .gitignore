@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.env
+
+# Poetry
+poetry.toml
+
+# pytest / coverage
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local artifacts
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Demo outputs
+real-fast*.json
+real-fast*.yml
+real-fast*.tf
+final-demo-*.yml
+final-demo-*.tf
+final-demo-*.json
+test-*.yml
+test-*.tf
+test-*.json
+demo-success.json

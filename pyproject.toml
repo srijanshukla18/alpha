@@ -14,10 +14,11 @@ tenacity = "^8.5.0"
 requests = "^2.32.3"
 pydantic = "^2.8.2"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 moto = "^5.0.17"
 pytest = "^8.2.2"
 pytest-asyncio = "^0.23.6"
+diagrams = "^0.24.4"
 
 [tool.poetry.scripts]
 alpha = "alpha_agent.main:main"

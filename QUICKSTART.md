@@ -190,6 +190,25 @@ poetry run alpha apply \
 
 `alpha apply` defaults to `--require-approval False`. Add `--require-approval --approval-table <table>` once approvals are wired.
 
+## Optional: AgentCore Runtime (deploy primitives)
+
+Deploy ALPHA primitives as managed endpoints using the provided entrypoint module (single entrypoint with `action` key):
+
+```bash
+# Use the entrypoint shipped with ALPHA
+# Bootstrap a uv project for AgentCore (one-time)
+./scripts/bootstrap_agentcore.sh agentcore_deploy
+
+# Configure and launch using that directory
+uv --directory agentcore_deploy run agentcore configure -e src/alpha_agent/agentcore_entrypoint.py
+uv --directory agentcore_deploy run agentcore launch
+uv --directory agentcore_deploy run agentcore status
+
+# Invoke examples
+uv --directory agentcore_deploy run agentcore invoke '{"action":"analyze_fast_policy","roleArn":"'$ROLE_ARN'","usageDays":1,"region":"'$AWS_REGION'"}'
+uv --directory agentcore_deploy run agentcore invoke '{"action":"enforce_policy_guardrails","policy":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]},"preset":"prod"}'
+```
+
 ## Troubleshooting
 
 ### "Access Analyzer not found" (Analyzer mode)

@@ -170,11 +170,34 @@ def main() -> None:
     else:
         print("Skipping live execution (no STATE_MACHINE_ARN). See docs/DEMO_SCRIPT.md for setup.")
 
+    # Step 5: AgentCore Runtime invocation (if uv + runtime are available)
+    print_hr("AgentCore Runtime (managed endpoints)")
+    agentcore_dir = os.getenv("AGENTCORE_DIR", "agentcore_deploy")
+    print(f"Using AgentCore project directory: {agentcore_dir}")
+    if pause("Press Enter to show AgentCore status, 's' to skip: ") != "s":
+        run(["uv", "--directory", agentcore_dir, "run", "agentcore", "status"], env=env)
+    # analyze_fast_policy
+    if pause("Press Enter to invoke analyze_fast_policy via AgentCore, 's' to skip: ") != "s":
+        payload = {
+            "action": "analyze_fast_policy",
+            "roleArn": role_arn,
+            "usageDays": args.usage_days,
+            "region": aws_region,
+        }
+        import json as _json
+        run(["uv", "--directory", agentcore_dir, "run", "agentcore", "invoke", _json.dumps(payload)], env=env)
+    # enforce_policy_guardrails
+    if pause("Press Enter to invoke enforce_policy_guardrails via AgentCore, 's' to skip: ") != "s":
+        toy_policy = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
+        payload2 = {"action": "enforce_policy_guardrails", "policy": toy_policy, "preset": "prod"}
+        import json as _json
+        run(["uv", "--directory", agentcore_dir, "run", "agentcore", "invoke", _json.dumps(payload2)], env=env)
+
     # Close
     print_hr("Close")
     print("In under a minute of runtime, we produced an explainable least‑privilege policy from real usage, enforced guardrails, and kicked off a safe rollout. Practical today; Analyzer path available when you want deeper scoping.")
+    print("\nBonus: AgentCore Runtime entrypoints are available at src/alpha_agent/agentcore_entrypoint.py for managed deployment (enforce_policy_guardrails, analyze_fast_policy). See README/QUICKSTART.")
 
 
 if __name__ == "__main__":
     main()
-
