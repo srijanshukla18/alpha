@@ -11,12 +11,10 @@ __version__ = "1.0.0"
 # Exit codes for CI/CD integration
 EXIT_SUCCESS = 0           # Analysis complete, safe to proceed
 EXIT_ERROR = 1            # Tool error (bad args, API failure, etc.)
-EXIT_RISKY = 2            # Analysis shows high risk (>10% break probability)
 EXIT_GUARDRAIL_VIOLATION = 3  # Guardrail constraints violated
 
 EXIT_CODE_DESCRIPTIONS = {
     EXIT_SUCCESS: "Success - safe to proceed",
     EXIT_ERROR: "Error - tool failure",
-    EXIT_RISKY: "Risk detected - high break probability",
     EXIT_GUARDRAIL_VIOLATION: "Guardrail violation - policy blocked",
 }

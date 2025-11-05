@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Dict
 
-from alpha_agent.cli import EXIT_SUCCESS, EXIT_RISKY, EXIT_GUARDRAIL_VIOLATION, EXIT_ERROR
+from alpha_agent.cli import EXIT_SUCCESS, EXIT_GUARDRAIL_VIOLATION, EXIT_ERROR
 from alpha_agent.cli.formatters import (
     format_terminal_summary,
     format_json_proposal,
@@ -21,7 +21,6 @@ from alpha_agent.fast_collector import generate_policy_fast
 from alpha_agent.diff import compute_policy_diff, fetch_inline_policy
 from alpha_agent.guardrails import enforce_guardrails
 from alpha_agent.models import PolicyDocument, PolicyProposal, RiskSignal
-from alpha_agent.reasoning import BedrockReasoner, BedrockReasoningError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +54,6 @@ def run_analyze(
     suppress_actions: list[str] | None = None,
     output_cloudformation: str | None = None,
     output_terraform: str | None = None,
-    bedrock_model_id: str | None = None,
 ) -> int:
     """
     Run policy analysis for a role.
@@ -80,7 +78,7 @@ def run_analyze(
 
         print("⚡ Analyzing IAM role usage from CloudTrail...\n")
 
-        # Generate policy from CloudTrail Event History (fast path)
+        # Generate policy from CloudTrail Event History
         generated_policy = generate_policy_fast(
             role_arn=role_arn, usage_days=usage_days, region=region
         )
@@ -90,32 +88,15 @@ def run_analyze(
         if baseline_policy_name:
             existing_policy = fetch_inline_policy(role_arn, baseline_policy_name)
 
-        # Run Bedrock reasoning (optional, with graceful fallback)
-        context = {
-            "role": role_arn,
-            "environment": "production",
-            "business_impact": "medium",
-        }
-
-        try:
-            reasoner = BedrockReasoner(model_id=bedrock_model_id)
-            proposal = reasoner.propose_policy(context, generated_policy)
-            print("✓ Bedrock reasoning applied\n")
-        except BedrockReasoningError as err:
-            LOGGER.warning("Bedrock unavailable, using fallback reasoning: %s", err)
-            # Fallback: pass-through proposal with conservative risk signal
-            proposal = PolicyProposal(
-                proposed_policy=generated_policy,
-                rationale=(
-                    "Policy based on observed CloudTrail actions. "
-                    "Bedrock reasoning unavailable - using conservative fallback."
-                ),
-                risk_signal=RiskSignal(
-                    probability_of_break=0.05,
-                    rationale="Actions observed in CloudTrail; guardrails enforced.",
-                ),
-            )
-            print("⚠️  Bedrock unavailable - using fallback (still safe)\n")
+        # Create proposal with the generated policy
+        proposal = PolicyProposal(
+            proposed_policy=generated_policy,
+            rationale=f"Policy based on {usage_days} days of CloudTrail activity. Contains only observed actions.",
+            risk_signal=RiskSignal(
+                probability_of_break=0.05,
+                rationale="Policy includes all observed actions from CloudTrail.",
+            ),
+        )
 
         # Apply guardrails
         sanitized_policy, violations = enforce_guardrails(
@@ -140,9 +121,6 @@ def run_analyze(
         if len(proposal.guardrail_violations) > 0:
             exit_code = EXIT_GUARDRAIL_VIOLATION
             print(f"⚠️  Exit code: {exit_code} (guardrail violations detected)")
-        elif proposal.risk_signal.probability_of_break > 0.10:
-            exit_code = EXIT_RISKY
-            print(f"⚠️  Exit code: {exit_code} (high risk detected)")
         else:
             print(f"✓ Exit code: {exit_code} (safe to proceed)")
 

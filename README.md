@@ -38,7 +38,6 @@ poetry run alpha analyze \
 - What permissions are actually used
 - What's safe to remove
 - Ready-to-use Terraform/CloudFormation patches
-- Risk assessment (optional, needs Bedrock)
 
 ## Common Scenarios
 
@@ -75,7 +74,7 @@ Output: Shows what permissions were called in last 2 hours. Instantly see what's
 1. Scans CloudTrail Event History (fast, ~5 seconds)
 2. Finds all API calls made by the role
 3. Generates IAM policy with only those permissions
-4. (Optional) Uses Bedrock to add edge-case permissions and assess risk
+4. Applies safety guardrails
 5. Outputs JSON + Terraform + CloudFormation
 
 ## Commands
@@ -94,7 +93,6 @@ alpha analyze --role-arn <ARN> [options]
 - `--guardrails {none|sandbox|prod}` - Safety level (default: prod)
 - `--exclude-services SVCS` - Skip services (e.g., `ec2,rds`)
 - `--suppress-actions ACTIONS` - Block specific actions
-- `--bedrock-model MODEL` - Override Bedrock model (optional)
 
 ### propose
 
@@ -110,12 +108,10 @@ alpha propose --repo org/infra --branch alpha/harden-role --input policy.json
 - Python 3.11+
 - AWS credentials configured
 - CloudTrail enabled
-- (Optional) Bedrock access for AI reasoning
 
 **AWS permissions needed:**
 - `cloudtrail:LookupEvents`
 - `iam:GetRole`, `iam:GetRolePolicy`
-- `bedrock:InvokeModel` (optional)
 
 ## Guardrails
 
@@ -134,25 +130,13 @@ alpha propose --repo org/infra --branch alpha/harden-role --input policy.json
 
 - **0** - Success
 - **1** - Tool error
-- **2** - High risk (>10% break probability)
 - **3** - Guardrail violation
 
 ```yaml
 # In CI pipeline
 - run: alpha analyze --role-arn $ROLE_ARN --guardrails prod
-  # Fails pipeline if exit code >= 2
+  # Fails pipeline if exit code >= 3
 ```
-
-## Bedrock (Optional)
-
-Uses Claude Sonnet 4.5 by default. Falls back gracefully if unavailable.
-
-For Nova Pro:
-```bash
-export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
-```
-
-**Cost:** ~$0.03-0.05 per analysis (or $0 without Bedrock)
 
 ## What It Doesn't Do
 
@@ -166,7 +150,18 @@ export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
 
 **"AWS credentials not configured"** - Run `aws configure` or set env vars.
 
-**"Bedrock access denied"** - Tool works without Bedrock. To enable: Go to Bedrock Console → Model Access → Enable Claude.
+## Cost
+
+**Free.** CloudTrail Event History API and IAM API calls have no charge.
+
+## vs AWS Access Analyzer
+
+AWS Access Analyzer does the same thing, but:
+- Takes 10-30 minutes (ALPHA: 5 seconds)
+- AWS Console only (ALPHA: CLI)
+- No Terraform/CloudFormation output (ALPHA: yes)
+
+Use ALPHA when you need **fast answers** and **IaC-ready output**.
 
 ## License
 

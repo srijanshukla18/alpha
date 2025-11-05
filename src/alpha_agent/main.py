@@ -105,12 +105,6 @@ def main() -> None:
         help="Path to save Terraform HCL patch (e.g., tf-patch.tf)",
     )
 
-    analyze_parser.add_argument(
-        "--bedrock-model",
-        dest="bedrock_model",
-        help="Override Bedrock model ID (e.g., us.amazon.nova-pro-v1:0)",
-    )
-
     # ===== PROPOSE COMMAND =====
     propose_parser = subparsers.add_parser(
         "propose",
@@ -184,7 +178,6 @@ def main() -> None:
                 suppress_actions=suppress_actions,
                 output_cloudformation=args.output_cloudformation,
                 output_terraform=args.output_terraform,
-                bedrock_model_id=args.bedrock_model,
             )
 
         elif args.command == "propose":
