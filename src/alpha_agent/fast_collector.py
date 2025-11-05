@@ -16,7 +16,12 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _build_cloudtrail_client(region: Optional[str] = None) -> boto3.client:
-    return boto3.client("cloudtrail", region_name=region)
+    try:
+        return boto3.client("cloudtrail", region_name=region)
+    except Exception as err:
+        raise RuntimeError(
+            f"Failed to create CloudTrail client. Ensure AWS credentials are configured. Error: {err}"
+        ) from err
 
 
 def _role_name_from_arn(role_arn: str) -> str:

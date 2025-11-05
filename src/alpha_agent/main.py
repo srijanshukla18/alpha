@@ -263,7 +263,7 @@ def main() -> None:
                 else None
             )
             suppress_actions = (
-                [a.strip() for s in args.suppress_actions.split(",")]
+                [a.strip() for a in args.suppress_actions.split(",")]
                 if args.suppress_actions
                 else None
             )

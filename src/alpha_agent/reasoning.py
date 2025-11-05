@@ -30,7 +30,12 @@ class BedrockReasoner:
     ) -> None:
         # Allow override via env var
         self.model_id = model_id or os.getenv("ALPHA_BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
-        self.client = client or boto3.client("bedrock-runtime")
+        try:
+            self.client = client or boto3.client("bedrock-runtime")
+        except Exception as err:
+            raise BedrockReasoningError(
+                f"Failed to create Bedrock client. Ensure AWS credentials are configured and you have access to Bedrock. Error: {err}"
+            ) from err
         self.temperature = temperature
 
     def _build_prompt(self, context: Dict[str, Any], generated_policy: PolicyDocument) -> str:

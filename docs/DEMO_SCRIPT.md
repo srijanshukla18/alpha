@@ -4,7 +4,7 @@ Use this script with demo_repl.py to narrate a reliable 3‑minute demo that sho
 
 ## Prep (off‑camera)
 
-- export ROLE_ARN=arn:aws:iam::097607620475:role/AlphaDemoRole
+- export ROLE_ARN=arn:aws:iam::123456789012:role/AlphaDemoRole
 - export AWS_REGION=us-east-1
 - Optional: export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
 - Optional (for rollout): export STATE_MACHINE_ARN=arn:aws:states:us-east-1:...:stateMachine:AlphaMinimalRollout

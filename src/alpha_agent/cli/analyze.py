@@ -70,8 +70,9 @@ def run_analyze(
     LOGGER.info("Starting policy analysis for %s", role_arn)
 
     try:
-        # Get guardrail configuration
-        guardrail_config = GUARDRAIL_PRESETS.get(guardrails, GUARDRAIL_PRESETS["prod"])
+        # Get guardrail configuration (deep copy to avoid mutating presets)
+        import copy
+        guardrail_config = copy.deepcopy(GUARDRAIL_PRESETS.get(guardrails, GUARDRAIL_PRESETS["prod"]))
 
         # Add user-specified exclusions
         if exclude_services:
