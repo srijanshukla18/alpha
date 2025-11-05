@@ -154,14 +154,31 @@ alpha propose --repo org/infra --branch alpha/harden-role --input policy.json
 
 **Free.** CloudTrail Event History API and IAM API calls have no charge.
 
-## vs AWS Access Analyzer
+## When to Use ALPHA vs Alternatives
 
-AWS Access Analyzer does the same thing, but:
-- Takes 10-30 minutes (ALPHA: 5 seconds)
-- AWS Console only (ALPHA: CLI)
-- No Terraform/CloudFormation output (ALPHA: yes)
+**Use ALPHA when:**
+- You need fast answers (incident response, quick audits, dev workflow)
+- You want Terraform/CloudFormation output ready to commit
+- You prefer CLI over AWS Console
+- You're checking staging roles before promoting to prod
 
-Use ALPHA when you need **fast answers** and **IaC-ready output**.
+**Use AWS Access Analyzer when:**
+- You need the most comprehensive analysis (90 day deep dive)
+- You want resource-scoped policies (specific ARNs, not `*`)
+- You're doing quarterly compliance audits (time isn't critical)
+- Official AWS tooling is required by your org
+
+**Use iamlive when:**
+- You're developing new code and need policies as you write
+- You want to generate policies without CloudTrail history
+- You're working in local/dev environments
+
+**Use CloudTracker/RepoKid when:**
+- You need organization-wide continuous auditing
+- You want automated removal (high-risk, high-reward)
+- You have complex multi-account setups
+
+ALPHA is the **fast, practical middle ground**: quicker than Access Analyzer, more audit-focused than iamlive, simpler than enterprise tools.
 
 ## License
 
