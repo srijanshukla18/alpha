@@ -1,286 +1,172 @@
-# ALPHA - IAM Least-Privilege Policy Generator
+# ALPHA - IAM Policy Auditor
 
-Automatically generate least-privilege IAM policies based on actual CloudTrail usage.
+Scan CloudTrail, generate least-privilege IAM policies in seconds.
 
-## The Problem
+## Why
 
-- 95% of IAM permissions are never used in production
-- Roles have `AdminAccess` or `*` wildcards everywhere
-- Manual policy audits take weeks  
-- Fear of breaking production prevents fixes
+Your IAM roles have `s3:*`, `dynamodb:*`, `AdminAccess` everywhere.
+Security asks "why does this role need all these permissions?"
+You spend 2 hours digging through CloudTrail logs to find out.
 
-## The Solution
+**ALPHA does it in 5 seconds.**
 
-ALPHA scans CloudTrail to see what IAM actions a role **actually uses**, then generates a tight policy with only those permissions.
-
-**Simple workflow:**
-1. Analyze: Scan CloudTrail for a role's actual usage
-2. Review: Get a least-privilege policy + risk assessment
-3. Apply: Use the generated CloudFormation/Terraform patches
-
-## Quick Start
-
-### Install
+## Install
 
 ```bash
-# Clone and install
 git clone https://github.com/YOUR_ORG/alpha.git
 cd alpha
 poetry install
 ```
 
-### Prerequisites
-
-- Python 3.11+
-- AWS credentials configured
-- CloudTrail enabled in your account
-- (Optional) Amazon Bedrock model access for AI reasoning
-
-### Basic Usage
+## Use
 
 ```bash
-# Analyze a role
-export ROLE_ARN=arn:aws:iam::YOUR_ACCOUNT:role/YourRole
-
+# See what a role actually uses
 poetry run alpha analyze \
-  --role-arn "$ROLE_ARN" \
-  --output proposal.json
+  --role-arn arn:aws:iam::123456789012:role/YourRole \
+  --usage-days 30 \
+  --output policy.json
 
-# View the results
-cat proposal.json | jq '.proposal.rationale'
-cat proposal.json | jq '.diff'
+# Get Terraform/CloudFormation patches
+poetry run alpha analyze \
+  --role-arn arn:aws:iam::123456789012:role/YourRole \
+  --output-terraform patch.tf \
+  --output-cloudformation patch.yml
 ```
 
-### With All Output Formats
+**Output shows:**
+- What permissions are actually used
+- What's safe to remove
+- Ready-to-use Terraform/CloudFormation patches
+- Risk assessment (optional, needs Bedrock)
+
+## Common Scenarios
+
+### "Why does this role have s3:*?"
 
 ```bash
-poetry run alpha analyze \
-  --role-arn "$ROLE_ARN" \
-  --output proposal.json \
-  --output-cloudformation cfn-patch.yml \
-  --output-terraform tf-patch.tf
-
-# Now you have patches ready to apply to your infrastructure
+alpha analyze --role-arn arn:aws:iam::123:role/SuspiciousRole --usage-days 90
 ```
 
-## How It Works
+Output: "Used 3 S3 actions in 90 days: GetObject, ListBucket, PutObject. Never used DeleteBucket, DeleteObject, or 2,844 other permissions."
 
-1. **Scans CloudTrail** - Uses CloudTrail Event History API to see what actions the role performed (configurable time window, default 30 days)
+**Answer in 5 seconds, not 2 hours.**
 
-2. **Generates Policy** - Creates an IAM policy with only the observed actions, grouped by service
+### "What permissions for new Lambda?"
 
-3. **AI Reasoning (Optional)** - If you have Bedrock access, uses Claude/Nova to:
-   - Add edge-case permissions (e.g., missing `ListBucket` when `GetObject` is used)
-   - Assess break risk
-   - Suggest safer conditions
+```bash
+# Deploy to staging with AdminAccess
+# Let it run 24 hours
+alpha analyze --role-arn arn:aws:iam::123:role/NewLambda-staging --usage-days 1
+```
 
-4. **Enforces Guardrails** - Removes dangerous patterns:
-   - Blocks wildcards (`iam:*`, `s3:*`)
-   - Blocks sensitive actions (`iam:PassRole`, `sts:AssumeRole`)
-   - Enforces conditions (e.g., region locks)
+Output: Tight policy based on actual usage. Deploy to prod with least-privilege from day 1.
 
-5. **Outputs Results** - Provides ready-to-use patches in multiple formats
+### "Did tightening IAM break production?"
+
+```bash
+alpha analyze --role-arn arn:aws:iam::123:role/BrokenRole --usage-days 0.1
+```
+
+Output: Shows what permissions were called in last 2 hours. Instantly see what's missing.
+
+## What It Does
+
+1. Scans CloudTrail Event History (fast, ~5 seconds)
+2. Finds all API calls made by the role
+3. Generates IAM policy with only those permissions
+4. (Optional) Uses Bedrock to add edge-case permissions and assess risk
+5. Outputs JSON + Terraform + CloudFormation
 
 ## Commands
 
 ### analyze
 
-Analyze an IAM role and generate a least-privilege policy.
-
 ```bash
-poetry run alpha analyze --role-arn <ARN> [OPTIONS]
+alpha analyze --role-arn <ARN> [options]
 ```
 
 **Options:**
-- `--role-arn` (required) - IAM role ARN to analyze
-- `--usage-days N` - Days of CloudTrail to scan (default: 30)
-- `--output FILE` - Save proposal JSON
-- `--output-cloudformation FILE` - Save CloudFormation patch
+- `--usage-days N` - Days to scan (default: 30)
+- `--output FILE` - Save JSON proposal
 - `--output-terraform FILE` - Save Terraform patch
-- `--guardrails {none|sandbox|prod}` - Guardrail level (default: prod)
-- `--exclude-services SERVICES` - Comma-separated services to exclude
-- `--suppress-actions ACTIONS` - Comma-separated actions to block
-- `--bedrock-model MODEL_ID` - Override Bedrock model
-
-**Examples:**
-
-```bash
-# Basic analysis
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/MyRole --output proposal.json
-
-# Different time window
-poetry run alpha analyze --role-arn $ROLE_ARN --usage-days 7 --output proposal.json
-
-# Less strict guardrails
-poetry run alpha analyze --role-arn $ROLE_ARN --guardrails sandbox --output proposal.json
-
-# Exclude specific services
-poetry run alpha analyze --role-arn $ROLE_ARN --exclude-services ec2,rds --output proposal.json
-
-# Use Nova Pro instead of Claude
-poetry run alpha analyze --role-arn $ROLE_ARN --bedrock-model us.amazon.nova-pro-v1:0
-```
+- `--output-cloudformation FILE` - Save CloudFormation patch
+- `--guardrails {none|sandbox|prod}` - Safety level (default: prod)
+- `--exclude-services SVCS` - Skip services (e.g., `ec2,rds`)
+- `--suppress-actions ACTIONS` - Block specific actions
+- `--bedrock-model MODEL` - Override Bedrock model (optional)
 
 ### propose
 
-Create a GitHub pull request with the policy changes.
-
-```bash
-poetry run alpha propose --repo <ORG/REPO> --branch <BRANCH> --input proposal.json
-```
-
-**Options:**
-- `--repo` (required) - GitHub repository (e.g., `myorg/infrastructure`)
-- `--branch` (required) - Branch name for the PR
-- `--input` (required) - Proposal JSON from analyze command
-- `--base` - Base branch (default: main)
-- `--title` - Custom PR title
-- `--draft` - Create as draft PR
-- `--github-token` - GitHub token (or set `GITHUB_TOKEN` env var)
-
-**Example:**
+Create GitHub PR with policy changes:
 
 ```bash
 export GITHUB_TOKEN=ghp_your_token
-
-poetry run alpha propose \
-  --repo myorg/infrastructure \
-  --branch alpha/harden-ci-role \
-  --input proposal.json
+alpha propose --repo org/infra --branch alpha/harden-role --input policy.json
 ```
-
-## Guardrail Presets
-
-### none
-No restrictions. Use for experimentation only.
-
-### sandbox
-- Blocks: `iam:PassRole`
-
-### prod (default)
-- Blocks: `iam:*`, `sts:AssumeRole`
-- Requires: `StringEquals: { aws:RequestedRegion: us-east-1 }`
-- Disallows services: `iam`, `organizations`
-
-## Exit Codes (CI/CD Integration)
-
-ALPHA uses exit codes to gate CI pipelines:
-
-- **0** - Success, safe to proceed
-- **1** - Tool error (bad arguments, AWS API failure, etc.)
-- **2** - High risk (>10% break probability according to Bedrock)
-- **3** - Guardrail violation (policy blocked by safety rules)
-
-**Example CI usage:**
-
-```yaml
-- name: Analyze IAM Role
-  run: |
-    poetry run alpha analyze \
-      --role-arn ${{ env.ROLE_ARN }} \
-      --guardrails prod \
-      --output proposal.json
-
-- name: Block if risky
-  if: ${{ failure() }}
-  run: echo "Policy too risky or violates guardrails"
-```
-
-## Bedrock Models
-
-### Default: Anthropic Claude Sonnet 4.5
-
-ALPHA uses Claude for reasoning by default. Enable it in Bedrock Console → Model Access.
-
-### Using Amazon Nova Pro
-
-```bash
-export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
-poetry run alpha analyze --role-arn $ROLE_ARN
-```
-
-Or via CLI:
-```bash
-poetry run alpha analyze --role-arn $ROLE_ARN --bedrock-model us.amazon.nova-pro-v1:0
-```
-
-### Graceful Fallback
-
-If Bedrock is unavailable or not configured, ALPHA still works - it just uses CloudTrail data without AI reasoning.
-
-## Troubleshooting
-
-### "No CloudTrail events found"
-
-The role hasn't been used recently. Try:
-- Shorter time window: `--usage-days 1`
-- Ensure CloudTrail is enabled and logging
-- Check the role has been used in the specified region
-
-### "AWS credentials not configured"
-
-```bash
-aws configure
-# OR
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_REGION=us-east-1
-```
-
-### "Bedrock access denied"
-
-ALPHA works without Bedrock, but to enable AI reasoning:
-1. Go to AWS Bedrock Console → Model Access
-2. Enable Claude Sonnet 4.5 or Nova Pro
-3. Grant your IAM principal `bedrock:InvokeModel` permission
-
-### "Exit code 2 (risky)"
-
-Bedrock assessed >10% break probability. Review the risk assessment:
-
-```bash
-cat proposal.json | jq '.proposal.riskSignal'
-cat proposal.json | jq '.proposal.remediationNotes'
-```
-
-### "Exit code 3 (guardrail violation)"
-
-The generated policy contains blocked actions. Options:
-
-```bash
-# Use less strict guardrails
-poetry run alpha analyze --role-arn $ROLE_ARN --guardrails sandbox
-
-# Suppress specific actions
-poetry run alpha analyze --role-arn $ROLE_ARN --suppress-actions iam:PassRole
-```
-
-## Cost Estimate
-
-**Per role analysis:**
-- CloudTrail Event History API: Free
-- Bedrock inference (Claude/Nova): ~$0.03-0.05 per analysis
-- IAM API calls: Free
-
-**Total: ~$0.05 per role** (or $0 if not using Bedrock)
-
-## Security
-
-- ALPHA never modifies IAM policies directly - it only generates proposals
-- All operations are read-only except for optional GitHub PR creation
-- Guardrails enforce organizational security requirements
-- Exit codes enable CI gating to prevent risky deployments
 
 ## Requirements
 
 - Python 3.11+
-- AWS credentials with:
-  - `cloudtrail:LookupEvents`
-  - `iam:GetRole`, `iam:GetRolePolicy`, `iam:ListRolePolicies`
-  - `bedrock:InvokeModel` (optional, for AI reasoning)
-- CloudTrail enabled in the account
-- (Optional) Bedrock model access for AI features
-- (Optional) GitHub token for PR creation
+- AWS credentials configured
+- CloudTrail enabled
+- (Optional) Bedrock access for AI reasoning
+
+**AWS permissions needed:**
+- `cloudtrail:LookupEvents`
+- `iam:GetRole`, `iam:GetRolePolicy`
+- `bedrock:InvokeModel` (optional)
+
+## Guardrails
+
+**prod (default):**
+- Blocks `iam:*`, `sts:AssumeRole`
+- Requires region conditions
+- Disallows `iam`, `organizations` services
+
+**sandbox:**
+- Blocks `iam:PassRole` only
+
+**none:**
+- No restrictions
+
+## Exit Codes (for CI/CD)
+
+- **0** - Success
+- **1** - Tool error
+- **2** - High risk (>10% break probability)
+- **3** - Guardrail violation
+
+```yaml
+# In CI pipeline
+- run: alpha analyze --role-arn $ROLE_ARN --guardrails prod
+  # Fails pipeline if exit code >= 2
+```
+
+## Bedrock (Optional)
+
+Uses Claude Sonnet 4.5 by default. Falls back gracefully if unavailable.
+
+For Nova Pro:
+```bash
+export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
+```
+
+**Cost:** ~$0.03-0.05 per analysis (or $0 without Bedrock)
+
+## What It Doesn't Do
+
+- ❌ Doesn't modify IAM automatically (you review and deploy)
+- ❌ Doesn't add resource ARN scoping (uses `*`, you tighten manually)
+- ❌ Doesn't know about future use cases (only past usage)
+
+## Troubleshooting
+
+**"No CloudTrail events"** - Role hasn't been used recently. Try `--usage-days 1`.
+
+**"AWS credentials not configured"** - Run `aws configure` or set env vars.
+
+**"Bedrock access denied"** - Tool works without Bedrock. To enable: Go to Bedrock Console → Model Access → Enable Claude.
 
 ## License
 
@@ -288,4 +174,4 @@ MIT
 
 ---
 
-**Stop over-privileged IAM roles. Generate least-privilege policies from actual usage.**
+**Stop spending hours auditing IAM. Get answers in seconds.**
