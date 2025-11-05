@@ -1,25 +1,18 @@
 """
-ALPHA CLI - Autonomous Least-Privilege Hardening Agent
+ALPHA CLI - IAM Least-Privilege Policy Generator
 
-Command-line interface for IAM policy analysis and hardening.
+Analyzes IAM role usage from CloudTrail and generates least-privilege policies.
 
 Commands:
   analyze  - Analyze IAM role usage and generate least-privilege policy
   propose  - Create GitHub PR with policy proposal
-  apply    - Execute staged rollout via Step Functions
 
 Examples:
-  # Analyze a role (judge mode for demo)
-  alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --judge-mode
-
-  # Analyze with real AWS APIs
-  alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --output proposal.json
+  # Analyze a role
+  alpha analyze --role-arn arn:aws:iam::123:role/MyRole --output proposal.json
 
   # Create GitHub PR
-  alpha propose --repo org/infra --branch harden/ci-runner --input proposal.json
-
-  # Apply with staged rollout
-  alpha apply --state-machine-arn arn:aws:states:... --proposal proposal.json --dry-run
+  alpha propose --repo org/infra --branch harden/role --input proposal.json
 """
 from __future__ import annotations
 
@@ -30,7 +23,6 @@ import sys
 from alpha_agent.cli import EXIT_CODE_DESCRIPTIONS
 from alpha_agent.cli.analyze import run_analyze
 from alpha_agent.cli.propose import run_propose
-from alpha_agent.cli.apply import run_apply
 
 # Configure logging
 logging.basicConfig(
@@ -44,8 +36,8 @@ def main() -> None:
     """Main CLI entrypoint."""
     parser = argparse.ArgumentParser(
         prog="alpha",
-        description="ALPHA - Autonomous Least-Privilege Hardening Agent",
-        epilog="See https://github.com/your-org/alpha for full documentation",
+        description="ALPHA - IAM Least-Privilege Policy Generator",
+        epilog="Analyze CloudTrail usage and generate least-privilege IAM policies",
     )
 
     parser.add_argument(
@@ -55,6 +47,7 @@ def main() -> None:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True, help="Command to run")
+
 
     # ===== ANALYZE COMMAND =====
     analyze_parser = subparsers.add_parser(
@@ -103,12 +96,6 @@ def main() -> None:
     )
 
     analyze_parser.add_argument(
-        "--judge-mode",
-        action="store_true",
-        help="Use deterministic mock data for offline demo (no AWS calls)",
-    )
-
-    analyze_parser.add_argument(
         "--output-cloudformation",
         help="Path to save CloudFormation YAML patch (e.g., cfn-patch.yml)",
     )
@@ -116,32 +103,6 @@ def main() -> None:
     analyze_parser.add_argument(
         "--output-terraform",
         help="Path to save Terraform HCL patch (e.g., tf-patch.tf)",
-    )
-
-    analyze_parser.add_argument(
-        "--timeout-seconds",
-        type=int,
-        help="Max seconds to wait for Access Analyzer job (default: 1800 or ALPHA_ANALYZE_TIMEOUT_SECONDS)",
-    )
-
-    analyze_parser.add_argument(
-        "--fast",
-        dest="fast",
-        action="store_true",
-        default=True,
-        help="Fast mode (default): use CloudTrail Event History (no Access Analyzer)",
-    )
-    analyze_parser.add_argument(
-        "--no-fast",
-        dest="fast",
-        action="store_false",
-        help="Disable fast mode; use Access Analyzer",
-    )
-
-    analyze_parser.add_argument(
-        "--bedrock-model",
-        dest="bedrock_model",
-        help="Override Bedrock model ID (e.g., us.amazon.nova-pro-v1:0). Defaults to ALPHA_BEDROCK_MODEL_ID or Anthropic Sonnet.",
     )
 
     # ===== PROPOSE COMMAND =====
@@ -190,67 +151,6 @@ def main() -> None:
         help="GitHub personal access token (or set GITHUB_TOKEN env var)",
     )
 
-    # ===== APPLY COMMAND =====
-    apply_parser = subparsers.add_parser(
-        "apply",
-        help="Execute staged rollout via Step Functions",
-    )
-
-    apply_parser.add_argument(
-        "--state-machine-arn",
-        required=True,
-        help="Step Functions state machine ARN",
-    )
-
-    apply_parser.add_argument(
-        "--proposal",
-        required=True,
-        help="Path to proposal JSON from analyze command",
-    )
-
-    apply_parser.add_argument(
-        "--environment",
-        choices=["sandbox", "canary", "prod"],
-        default="prod",
-        help="Target environment (default: prod)",
-    )
-
-    apply_parser.add_argument(
-        "--canary",
-        type=int,
-        default=10,
-        help="Canary rollout percentage (default: 10)",
-    )
-
-    apply_parser.add_argument(
-        "--rollback-threshold",
-        default="AccessDenied>0.1%",
-        help="Rollback threshold expression (default: AccessDenied>0.1%%)",
-    )
-
-    apply_parser.add_argument(
-        "--require-approval",
-        action="store_true",
-        help="Require human approval before rollout",
-    )
-
-    apply_parser.add_argument(
-        "--approval-table",
-        help="DynamoDB table name for approvals (required if --require-approval)",
-    )
-
-    apply_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be done without executing",
-    )
-
-    apply_parser.add_argument(
-        "--judge-mode",
-        action="store_true",
-        help="Use deterministic mock execution (no AWS calls)",
-    )
-
     # Parse arguments
     args = parser.parse_args()
 
@@ -263,7 +163,7 @@ def main() -> None:
                 else None
             )
             suppress_actions = (
-                [a.strip() for s in args.suppress_actions.split(",")]
+                [a.strip() for a in args.suppress_actions.split(",")]
                 if args.suppress_actions
                 else None
             )
@@ -276,12 +176,8 @@ def main() -> None:
                 baseline_policy_name=args.baseline_policy_name,
                 exclude_services=exclude_services,
                 suppress_actions=suppress_actions,
-                judge_mode=args.judge_mode,
                 output_cloudformation=args.output_cloudformation,
                 output_terraform=args.output_terraform,
-                timeout_seconds=args.timeout_seconds,
-                fast=args.fast,
-                bedrock_model_id=args.bedrock_model,
             )
 
         elif args.command == "propose":
@@ -293,19 +189,6 @@ def main() -> None:
                 title=args.title,
                 draft=args.draft,
                 github_token=args.github_token,
-            )
-
-        elif args.command == "apply":
-            exit_code = run_apply(
-                state_machine_arn=args.state_machine_arn,
-                proposal_path=args.proposal,
-                environment=args.environment,
-                canary_percent=args.canary,
-                rollback_threshold=args.rollback_threshold,
-                require_approval=args.require_approval,
-                approval_table=args.approval_table,
-                dry_run=args.dry_run,
-                judge_mode=args.judge_mode,
             )
 
         else:
