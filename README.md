@@ -1,331 +1,286 @@
-# ALPHA – Autonomous Least-Privilege Hardening Agent
+# ALPHA - IAM Least-Privilege Policy Generator
 
-![AWS AI Agent Global Hackathon](https://img.shields.io/badge/AWS-AI_Agent_Hackathon-FF9900?style=for-the-badge&logo=amazon-aws)
-![Python](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python)
-![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
+Automatically generate least-privilege IAM policies based on actual CloudTrail usage.
 
-ALPHA is an AWS‑native AI agent that right‑sizes IAM policies from real usage. It supports two analysis paths:
-- ⚡ Fast Mode (default): uses CloudTrail Event History for a best‑effort policy in seconds (no Access Analyzer job)
-- ☁️ Analyzer Mode (optional): uses IAM Access Analyzer for resource‑scoped policies (slower)
+## The Problem
 
-Bedrock reasoning (Anthropic Claude or Amazon Nova Pro) provides rationale and risk; guardrails enforce hard constraints. CLI‑first, CI‑friendly.
+- 95% of IAM permissions are never used in production
+- Roles have `AdminAccess` or `*` wildcards everywhere
+- Manual policy audits take weeks  
+- Fear of breaking production prevents fixes
 
-## 30‑Second Quickstart (fast mode by default)
+## The Solution
+
+ALPHA scans CloudTrail to see what IAM actions a role **actually uses**, then generates a tight policy with only those permissions.
+
+**Simple workflow:**
+1. Analyze: Scan CloudTrail for a role's actual usage
+2. Review: Get a least-privilege policy + risk assessment
+3. Apply: Use the generated CloudFormation/Terraform patches
+
+## Quick Start
+
+### Install
 
 ```bash
+# Clone and install
+git clone https://github.com/YOUR_ORG/alpha.git
+cd alpha
 poetry install
+```
+
+### Prerequisites
+
+- Python 3.11+
+- AWS credentials configured
+- CloudTrail enabled in your account
+- (Optional) Amazon Bedrock model access for AI reasoning
+
+### Basic Usage
+
+```bash
+# Analyze a role
+export ROLE_ARN=arn:aws:iam::YOUR_ACCOUNT:role/YourRole
+
 poetry run alpha analyze \
-  --role-arn arn:aws:iam::123456789012:role/YourRole \
-  --guardrails sandbox \
+  --role-arn "$ROLE_ARN" \
+  --output proposal.json
+
+# View the results
+cat proposal.json | jq '.proposal.rationale'
+cat proposal.json | jq '.diff'
+```
+
+### With All Output Formats
+
+```bash
+poetry run alpha analyze \
+  --role-arn "$ROLE_ARN" \
   --output proposal.json \
   --output-cloudformation cfn-patch.yml \
   --output-terraform tf-patch.tf
+
+# Now you have patches ready to apply to your infrastructure
 ```
 
-Notes
-- Fast mode is on by default. Use `--no-fast` to force Access Analyzer.
-- To use Nova Pro: set `ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`.
-- No Bedrock access? ALPHA falls back and still produces outputs.
+## How It Works
 
-## Problem
+1. **Scans CloudTrail** - Uses CloudTrail Event History API to see what actions the role performed (configurable time window, default 30 days)
 
-- 95% of IAM permissions never used in production
-- Roles have `AdminAccess` or `*` wildcards
-- Manual policy audits take weeks
-- Fear of breaking prod prevents fixes
+2. **Generates Policy** - Creates an IAM policy with only the observed actions, grouped by service
 
-## Solution
+3. **AI Reasoning (Optional)** - If you have Bedrock access, uses Claude/Nova to:
+   - Add edge-case permissions (e.g., missing `ListBucket` when `GetObject` is used)
+   - Assess break risk
+   - Suggest safer conditions
 
-**Three commands. Full automation.**
+4. **Enforces Guardrails** - Removes dangerous patterns:
+   - Blocks wildcards (`iam:*`, `s3:*`)
+   - Blocks sensitive actions (`iam:PassRole`, `sts:AssumeRole`)
+   - Enforces conditions (e.g., region locks)
 
-### 1. `alpha analyze` - Generate Policy
+5. **Outputs Results** - Provides ready-to-use patches in multiple formats
+
+## Commands
+
+### analyze
+
+Analyze an IAM role and generate a least-privilege policy.
+
 ```bash
-alpha analyze \
-  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/YourRole \
-  --output proposal.json \
-  --output-cloudformation cfn-patch.yml \
-  --output-terraform tf-patch.tf \
-  --guardrails prod
+poetry run alpha analyze --role-arn <ARN> [OPTIONS]
 ```
 
-Behind the scenes
-- Fast: CloudTrail Event History → best‑effort actions (Resource "*")
-- Analyzer: Access Analyzer → resource‑scoped actions from trails
-- Bedrock (Claude or Nova) adds rationale/risk; guardrails enforce org rules
+**Options:**
+- `--role-arn` (required) - IAM role ARN to analyze
+- `--usage-days N` - Days of CloudTrail to scan (default: 30)
+- `--output FILE` - Save proposal JSON
+- `--output-cloudformation FILE` - Save CloudFormation patch
+- `--output-terraform FILE` - Save Terraform patch
+- `--guardrails {none|sandbox|prod}` - Guardrail level (default: prod)
+- `--exclude-services SERVICES` - Comma-separated services to exclude
+- `--suppress-actions ACTIONS` - Comma-separated actions to block
+- `--bedrock-model MODEL_ID` - Override Bedrock model
 
-Exit codes: 0=safe, 1=error, 2=risky (>10%), 3=guardrail violation
+**Examples:**
 
-### 2. `alpha propose` - Create PR
+```bash
+# Basic analysis
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/MyRole --output proposal.json
+
+# Different time window
+poetry run alpha analyze --role-arn $ROLE_ARN --usage-days 7 --output proposal.json
+
+# Less strict guardrails
+poetry run alpha analyze --role-arn $ROLE_ARN --guardrails sandbox --output proposal.json
+
+# Exclude specific services
+poetry run alpha analyze --role-arn $ROLE_ARN --exclude-services ec2,rds --output proposal.json
+
+# Use Nova Pro instead of Claude
+poetry run alpha analyze --role-arn $ROLE_ARN --bedrock-model us.amazon.nova-pro-v1:0
+```
+
+### propose
+
+Create a GitHub pull request with the policy changes.
+
+```bash
+poetry run alpha propose --repo <ORG/REPO> --branch <BRANCH> --input proposal.json
+```
+
+**Options:**
+- `--repo` (required) - GitHub repository (e.g., `myorg/infrastructure`)
+- `--branch` (required) - Branch name for the PR
+- `--input` (required) - Proposal JSON from analyze command
+- `--base` - Base branch (default: main)
+- `--title` - Custom PR title
+- `--draft` - Create as draft PR
+- `--github-token` - GitHub token (or set `GITHUB_TOKEN` env var)
+
+**Example:**
+
 ```bash
 export GITHUB_TOKEN=ghp_your_token
-alpha propose --repo org/infra --branch harden/role --input proposal.json
+
+poetry run alpha propose \
+  --repo myorg/infrastructure \
+  --branch alpha/harden-ci-role \
+  --input proposal.json
 ```
 
-Auto-generates PR with:
-- Risk assessment + confidence score
-- Before/after policy diff
-- Privilege reduction metrics (e.g., "85% reduction: 2,847 → 5 actions")
+## Guardrail Presets
 
-### 3. `alpha apply` - Staged Rollout
-```bash
-alpha apply \
-  --state-machine-arn arn:aws:states:us-east-1:123:stateMachine/Alpha \
-  --proposal proposal.json \
-  --environment prod \
-  --canary 10
-```
+### none
+No restrictions. Use for experimentation only.
 
-**Step Functions workflow:**
-1. Validate policy + check approval (DynamoDB)
-2. Canary deploy (10% traffic)
-3. Monitor CloudWatch (watch for AccessDenied spikes)
-4. Auto-rollback if errors > 0.1%, else promote to 100%
+### sandbox
+- Blocks: `iam:PassRole`
 
-## Key Features
+### prod (default)
+- Blocks: `iam:*`, `sts:AssumeRole`
+- Requires: `StringEquals: { aws:RequestedRegion: us-east-1 }`
+- Disallows services: `iam`, `organizations`
 
-- CLI‑first with CI exit codes (0/1/2/3)
-- Fast mode default; Analyzer optional
-- Bedrock reasoning (Claude or Nova Pro) with graceful fallback
-- Guardrails presets (none/sandbox/prod) + custom excludes/suppression
-- Multi‑format outputs: JSON, CloudFormation YAML, Terraform HCL, PR markdown
-- Judge Mode for offline demos (deterministic)
+## Exit Codes (CI/CD Integration)
 
-## Installation
+ALPHA uses exit codes to gate CI pipelines:
 
-```bash
-# Poetry (recommended)
-git clone https://github.com/your-org/alpha.git && cd alpha && poetry install
+- **0** - Success, safe to proceed
+- **1** - Tool error (bad arguments, AWS API failure, etc.)
+- **2** - High risk (>10% break probability according to Bedrock)
+- **3** - Guardrail violation (policy blocked by safety rules)
 
-# pipx (when published to PyPI)
-pipx install alpha-agent
-```
-
-## CLI Reference
-
-### `analyze` Options
-```bash
---role-arn              # IAM role ARN (required)
---usage-days 30         # CloudTrail analysis window
---output proposal.json  # Save proposal JSON
---output-cloudformation cfn.yml  # CloudFormation patch
---output-terraform tf.tf         # Terraform patch
---guardrails prod       # none/sandbox/prod
---exclude-services ec2,rds       # Skip services
---suppress-actions s3:DeleteBucket  # Block specific actions
---baseline-policy-name Current   # Diff against existing policy
---judge-mode            # Offline mock mode (no AWS)
---no-fast               # Use Access Analyzer instead of fast mode
---timeout-seconds 1800  # Wait budget for Access Analyzer path
---bedrock-model us.amazon.nova-pro-v1:0  # Override Bedrock model
-```
-
-### `propose` Options
-```bash
---repo org/infra        # GitHub repository
---branch harden/role    # Branch name
---input proposal.json   # Proposal from analyze
---base main             # Base branch
---title "Custom title"  # Override auto-generated title
---draft                 # Create as draft PR
---github-token ghp_xxx  # Or set GITHUB_TOKEN env
-```
-
-### `apply` Options
-```bash
---state-machine-arn arn:...  # Step Functions ARN
---proposal proposal.json     # Proposal file
---environment prod           # sandbox/canary/prod
---canary 10                  # Canary percentage
---rollback-threshold "AccessDenied>0.1%"
---require-approval           # Check DynamoDB approval
---approval-table Approvals   # DynamoDB table name
---dry-run                    # Simulate without executing
---judge-mode                 # Mock execution
-```
-
-## Guardrails
-
-none: no restrictions (sandbox)
-sandbox: blocks `iam:PassRole`
-prod: blocks `iam:*`, `sts:AssumeRole`; requires `StringEquals: { aws:RequestedRegion: us-east-1 }`; disallows `iam`, `organizations`
-
-Custom:
-```bash
---exclude-services ec2,lambda --suppress-actions dynamodb:DeleteTable
-```
-
-Violations trigger exit code 3 and block deployment.
-
-## GitHub Action
+**Example CI usage:**
 
 ```yaml
-- uses: your-org/alpha@v1
-  with:
-    mode: analyze
-    role_arn: arn:aws:iam::123:role/MyRole
-    guardrails: prod
-    output_path: proposal.json
+- name: Analyze IAM Role
+  run: |
+    poetry run alpha analyze \
+      --role-arn ${{ env.ROLE_ARN }} \
+      --guardrails prod \
+      --output proposal.json
 
-- name: Block risky changes
-  if: steps.analyze.outputs.exit_code >= 2
-  run: exit 1
+- name: Block if risky
+  if: ${{ failure() }}
+  run: echo "Policy too risky or violates guardrails"
 ```
 
-See `.github/workflows/` for complete examples (analyze on PR, apply on merge).
+## Bedrock Models
 
-## Architecture (high‑level)
+### Default: Anthropic Claude Sonnet 4.5
 
-- Fast collector: CloudTrail Event History → best‑effort action set
-- Analyzer collector (optional): Access Analyzer → resource‑scoped actions from trails
-- Reasoning: Bedrock (Claude or Nova) → rationale, risk, notes
-- Guardrails: enforce org constraints; gate CI with exit codes
-- Outputs: JSON, CFN, TF; optional PR creation; optional staged rollout via Step Functions
+ALPHA uses Claude for reasoning by default. Enable it in Bedrock Console → Model Access.
 
-## Examples
+### Using Amazon Nova Pro
 
 ```bash
-# Try offline with judge mode
-alpha analyze --role-arn arn:aws:iam::123:role/OverprivilegedAdmin --judge-mode
-
-# Real AWS analysis with all outputs
-alpha analyze \
-  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/YourRole \
-  --output proposal.json \
-  --output-cloudformation cfn-patch.yml \
-  --output-terraform tf-patch.tf
-
-# Full workflow
-alpha analyze --role-arn <ARN> --output proposal.json
-alpha propose --repo org/repo --branch harden/role --input proposal.json
-alpha apply --state-machine-arn <ARN> --proposal proposal.json --dry-run
+export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
+poetry run alpha analyze --role-arn $ROLE_ARN
 ```
 
-Sample inputs in `examples/inputs/` (admin role, CI runner, data pipeline).
+Or via CLI:
+```bash
+poetry run alpha analyze --role-arn $ROLE_ARN --bedrock-model us.amazon.nova-pro-v1:0
+```
 
-## Testing
+### Graceful Fallback
+
+If Bedrock is unavailable or not configured, ALPHA still works - it just uses CloudTrail data without AI reasoning.
+
+## Troubleshooting
+
+### "No CloudTrail events found"
+
+The role hasn't been used recently. Try:
+- Shorter time window: `--usage-days 1`
+- Ensure CloudTrail is enabled and logging
+- Check the role has been used in the specified region
+
+### "AWS credentials not configured"
 
 ```bash
-./test_judge_mode.sh  # End-to-end validation (no AWS creds needed)
+aws configure
+# OR
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION=us-east-1
 ```
 
-Validates all commands, guardrails, outputs, and judge mode determinism.
+### "Bedrock access denied"
 
-## Deployment (optional)
+ALPHA works without Bedrock, but to enable AI reasoning:
+1. Go to AWS Bedrock Console → Model Access
+2. Enable Claude Sonnet 4.5 or Nova Pro
+3. Grant your IAM principal `bedrock:InvokeModel` permission
 
-CDK stack under `infra/` provisions the staged rollout system (Step Functions, Lambdas, DynamoDB, CloudWatch). For analyzer mode, also provision an Access Analyzer and CloudTrail trails. See ARCHITECTURE.md for details.
+### "Exit code 2 (risky)"
 
-### Minimal Step Functions workflow (quick demo)
+Bedrock assessed >10% break probability. Review the risk assessment:
 
 ```bash
-# create an IAM role for Step Functions if you don't already have one
-# (trust states.amazonaws.com; attach AmazonStepFunctionsFullAccess for quick demos)
-aws iam create-role \
-  --role-name AlphaStepFunctionsRole \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"states.amazonaws.com"},"Action":"sts:AssumeRole"}]}' || true
-
-aws iam attach-role-policy \
-  --role-name AlphaStepFunctionsRole \
-  --policy-arn arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess || true
-
-export SFN_ROLE_ARN=arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/AlphaStepFunctionsRole
-
-# create a minimal state machine (all Pass states)
-aws stepfunctions create-state-machine \
-  --name AlphaMinimalRollout \
-  --definition file://workflows/minimal_state_machine.asl.json \
-  --role-arn "$SFN_ROLE_ARN"
-
-# capture the ARN that is returned and use it with alpha apply
-export STATE_MACHINE_ARN=arn:aws:states:us-east-1:...:stateMachine:AlphaMinimalRollout
-
-poetry run alpha apply \
-  --state-machine-arn "$STATE_MACHINE_ARN" \
-  --proposal proposal.json \
-  --dry-run
+cat proposal.json | jq '.proposal.riskSignal'
+cat proposal.json | jq '.proposal.remediationNotes'
 ```
 
-Real runs default to `--require-approval False`; pass `--require-approval --approval-table <table>` to enforce approvals.
+### "Exit code 3 (guardrail violation)"
 
-### AgentCore Runtime (optional)
-
-You can deploy ALPHA primitives as managed AgentCore Runtime endpoints:
-
-Entrypoint module: `src/alpha_agent/agentcore_entrypoint.py`
-
-Single entrypoint with action dispatch:
-- `action: "enforce_policy_guardrails"` → returns `sanitized_policy` + `violations`
-- `action: "analyze_fast_policy"` → returns best‑effort policy from CloudTrail Event History
-
-Quick deploy (using AgentCore Starter Toolkit):
+The generated policy contains blocked actions. Options:
 
 ```bash
-# 0) One-time project bootstrap (recommended)
-./scripts/bootstrap_agentcore.sh agentcore_deploy
+# Use less strict guardrails
+poetry run alpha analyze --role-arn $ROLE_ARN --guardrails sandbox
 
-# 1) Configure and launch (from repo root, using the project directory)
-uv --directory agentcore_deploy run agentcore configure -e src/alpha_agent/agentcore_entrypoint.py
-uv --directory agentcore_deploy run agentcore launch
-uv --directory agentcore_deploy run agentcore status
-
-# 2) Invoke examples (from repo root)
-uv --directory agentcore_deploy run agentcore invoke '{"action":"analyze_fast_policy","roleArn":"'$ROLE_ARN'","usageDays":1,"region":"'$AWS_REGION'"}'
-uv --directory agentcore_deploy run agentcore invoke '{"action":"enforce_policy_guardrails","policy":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]},"preset":"prod"}'
+# Suppress specific actions
+poetry run alpha analyze --role-arn $ROLE_ARN --suppress-actions iam:PassRole
 ```
 
-## Repository Structure
+## Cost Estimate
 
-```
-alpha/
-├── src/alpha_agent/
-│   ├── cli/              # CLI commands (analyze, propose, apply)
-│   │   ├── formatters.py # JSON, CFN, TF, PR, terminal outputs
-│   │   └── judge_mode.py # Mock data for offline demos
-│   ├── main.py           # CLI entrypoint
-│   ├── reasoning.py      # Bedrock reasoning (Claude or Nova)
-│   ├── collector.py      # Access Analyzer collector (optional)
-│   ├── fast_collector.py # Fast CloudTrail Event History collector (default)
-│   ├── guardrails.py     # Security constraints
-│   ├── diff.py           # Policy diffing
-│   └── models.py         # Pydantic schemas
-├── action/action.yml     # GitHub Action composite
-├── .github/workflows/    # Example workflows
-├── examples/             # Sample inputs/outputs
-├── lambdas/              # Lambda handlers
-├── infra/                # CDK infrastructure
-├── workflows/            # Step Functions definitions (minimal demo, legacy)
-└── test_judge_mode.sh    # E2E test script
-```
+**Per role analysis:**
+- CloudTrail Event History API: Free
+- Bedrock inference (Claude/Nova): ~$0.03-0.05 per analysis
+- IAM API calls: Free
 
-## Demo & Hackathon
+**Total: ~$0.05 per role** (or $0 if not using Bedrock)
 
-Judge Mode enables fully offline demos. For a live demo, prefer fast mode to avoid Access Analyzer latency. For hackathon submission text, see `hackathon.md` (rules) and `idea.md` (concept). 
+## Security
 
-Run the guided demo:
+- ALPHA never modifies IAM policies directly - it only generates proposals
+- All operations are read-only except for optional GitHub PR creation
+- Guardrails enforce organizational security requirements
+- Exit codes enable CI gating to prevent risky deployments
 
-```bash
-python3 demo_repl.py --role-arn "$ROLE_ARN" --state-machine-arn "$STATE_MACHINE_ARN"
-```
+## Requirements
 
-**Built for:** AWS AI Agent Global Hackathon 2025
-**Category:** Best Bedrock AgentCore Implementation
-
-**Why ALPHA wins:**
-1. **Production-ready** - Not a toy, ships as CLI + GitHub Action
-2. **Judge Mode** - Offline deterministic demos without AWS
-3. **Bedrock reasoning** - Claude Sonnet 4.5 adds edge-case permissions, assesses risk
-4. **Real AWS integration** - Access Analyzer (CloudTrail analysis) + Step Functions (staged rollout)
-5. **Multi-format outputs** - CFN, TF patches ready to paste into IaC
-6. **Guardrails** - Hard constraints (can't be bypassed by LLM)
-7. **Comprehensive** - CLI, Action, infra, docs, tests
-
-Use this README, QUICKSTART.md, and docs/ARCHITECTURE.md for submission content.
-
-### AgentCore (optional)
-
-- Tools exposed in `src/alpha_agent/agentcore.py`: generate policy, reason, enforce guardrails, diff, approvals, rollout, GitHub PR
-- Register with Amazon Bedrock AgentCore Gateway using `get_agentcore_tool_definitions()`
-- Handler Lambda at `lambdas/agentcore_runtime/handler.py` wires the tools; prompts can be defined dynamically (see code)
-- Great for the “agentic” judging track; CLI remains the primary interface
+- Python 3.11+
+- AWS credentials with:
+  - `cloudtrail:LookupEvents`
+  - `iam:GetRole`, `iam:GetRolePolicy`, `iam:ListRolePolicies`
+  - `bedrock:InvokeModel` (optional, for AI reasoning)
+- CloudTrail enabled in the account
+- (Optional) Bedrock model access for AI features
+- (Optional) GitHub token for PR creation
 
 ## License
 
@@ -333,5 +288,4 @@ MIT
 
 ---
 
-**Stop copying IAM policies from Stack Overflow. Let AI do the work.**
-Built with ❤️ for AWS AI Agent Global Hackathon • [GitHub](https://github.com/your-org/alpha) • [Demo Video](#)
+**Stop over-privileged IAM roles. Generate least-privilege policies from actual usage.**

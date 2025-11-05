@@ -6,8 +6,11 @@ from typing import Iterable, List, Optional, Set
 import boto3
 from botocore.exceptions import ClientError
 
-from .collector import PolicyGenerationError
 from .models import PolicyDiff, PolicyDocument
+
+
+class PolicyError(RuntimeError):
+    """Raised when policy operations fail."""
 
 
 def _build_iam_client() -> boto3.client:
@@ -71,7 +74,7 @@ def fetch_inline_policy(
         error_code = err.response.get("Error", {}).get("Code")
         if error_code == "NoSuchEntity":
             return None
-        raise PolicyGenerationError(f"Unable to read existing policy: {err}") from err
+        raise PolicyError(f"Unable to read existing policy: {err}") from err
 
     document = json.loads(response["PolicyDocument"])
     return PolicyDocument.model_validate(document)
