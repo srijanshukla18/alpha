@@ -75,20 +75,33 @@ alpha apply \
   --canary 10
 ```
 
-**Step Functions workflow:**
-1. Validate policy + check approval (DynamoDB)
-2. Canary deploy (10% traffic)
-3. Monitor CloudWatch (watch for AccessDenied spikes)
-4. Auto-rollback if errors > 0.1%, else promote to 100%
+### 4. `alpha status` - Monitor Rollout (Day 2)
+```bash
+alpha status --role-arn arn:aws:iam::123:role/MyRole --state-machine-arn arn:aws:states:...
+```
+Check the health and progress of ongoing or past rollouts directly from your terminal.
+
+### 5. `alpha diff` - Drift Detection
+```bash
+alpha diff --input proposal.json
+```
+Compare a previously generated proposal against the **live** state of the role. Perfect for detecting if someone manually over-privileged a role after ALPHA hardened it.
+
+### 6. `alpha rollback` - Emergency Revert
+```bash
+alpha rollback --proposal proposal.json --state-machine-arn arn:aws:states:...
+```
+Something went wrong? Instantly revert to the original policy state captured in your proposal file.
 
 ## Key Features
 
-- CLI‑first with CI exit codes (0/1/2/3)
-- Fast mode default; Analyzer optional
-- Bedrock reasoning (Claude or Nova Pro) with graceful fallback
-- Guardrails presets (none/sandbox/prod) + custom excludes/suppression
-- Multi‑format outputs: JSON, CloudFormation YAML, Terraform HCL, PR markdown
-- Judge Mode for offline demos (deterministic)
+- **CLI‑first with CI exit codes** (0/1/2/3)
+- **Day 2 Ops Ready**: Built-in monitoring, drift detection, and one-command rollback.
+- **Fast mode default**; Analyzer optional
+- **Bedrock reasoning** (Claude or Nova Pro) with graceful fallback
+- **Guardrails presets** (none/sandbox/prod) + custom excludes/suppression
+- **Multi‑format outputs**: JSON, CloudFormation YAML, Terraform HCL, PR markdown
+- **Judge Mode** for offline demos (deterministic)
 
 ## Installation
 
@@ -141,6 +154,28 @@ pipx install alpha-agent
 --approval-table Approvals   # DynamoDB table name
 --dry-run                    # Simulate without executing
 --judge-mode                 # Mock execution
+```
+
+## Common SRE Workflows
+
+### 🔍 Periodic Audit & Drift Detection
+Run this weekly via Cron or GitHub Actions to ensure no "permission creep" has occurred.
+```bash
+alpha analyze --role-arn $ROLE --output current.json
+alpha diff --input last_baseline.json
+```
+
+### 🚀 Staged Production Hardening
+Minimize risk with a multi-stage approach.
+1. `alpha analyze` (review JSON)
+2. `alpha propose` (peer review PR)
+3. `alpha apply --environment sandbox` (verify in dev)
+4. `alpha apply --environment prod --canary 10` (staged rollout)
+
+### 🚑 Emergency Incident Response
+If a hardening change breaks a legacy system, revert in seconds.
+```bash
+alpha rollback --proposal proposal_that_broke_it.json --state-machine-arn $SFN_ARN
 ```
 
 ## Guardrails

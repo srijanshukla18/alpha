@@ -75,3 +75,46 @@ def fetch_inline_policy(
 
     document = json.loads(response["PolicyDocument"])
     return PolicyDocument.model_validate(document)
+
+
+def fetch_all_role_policies(
+    role_arn: str,
+    client: Optional[boto3.client] = None,
+) -> PolicyDocument:
+    """
+    Fetch and aggregate all inline and managed policies for an IAM role.
+    """
+    client = client or _build_iam_client()
+    role_name = role_arn.split("/")[-1]
+    all_statements = []
+
+    try:
+        # 1. Inline policies
+        inline_policies = client.list_role_policies(RoleName=role_name)
+        for name in inline_policies.get("PolicyNames", []):
+            policy = client.get_role_policy(RoleName=role_name, PolicyName=name)
+            doc = json.loads(policy["PolicyDocument"])
+            stmts = doc.get("Statement", [])
+            if isinstance(stmts, dict): stmts = [stmts]
+            all_statements.extend(stmts)
+
+        # 2. Managed policies
+        managed_policies = client.list_attached_role_policies(RoleName=role_name)
+        for policy_ref in managed_policies.get("AttachedPolicies", []):
+            policy_arn = policy_ref["PolicyArn"]
+            # Get latest version
+            p_desc = client.get_policy(PolicyArn=policy_arn)
+            v_id = p_desc["Policy"]["DefaultVersionId"]
+            p_ver = client.get_policy_version(PolicyArn=policy_arn, VersionId=v_id)
+            doc = json.loads(p_ver["PolicyVersion"]["Document"])
+            stmts = doc.get("Statement", [])
+            if isinstance(stmts, dict): stmts = [stmts]
+            all_statements.extend(stmts)
+
+    except ClientError as err:
+        raise PolicyGenerationError(f"Unable to read role policies: {err}") from err
+
+    return PolicyDocument(
+        version="2012-10-17",
+        statement=all_statements
+    )

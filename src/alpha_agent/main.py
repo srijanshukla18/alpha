@@ -31,6 +31,9 @@ from alpha_agent.cli import EXIT_CODE_DESCRIPTIONS
 from alpha_agent.cli.analyze import run_analyze
 from alpha_agent.cli.propose import run_propose
 from alpha_agent.cli.apply import run_apply
+from alpha_agent.cli.diff import run_diff
+from alpha_agent.cli.status import run_status
+from alpha_agent.cli.rollback import run_rollback
 
 # Configure logging
 logging.basicConfig(
@@ -251,6 +254,90 @@ def main() -> None:
         help="Use deterministic mock execution (no AWS calls)",
     )
 
+    # ===== DIFF COMMAND =====
+    diff_parser = subparsers.add_parser(
+        "diff",
+        help="Compare proposal against current live role state",
+    )
+
+    diff_parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to proposal JSON from analyze command",
+    )
+
+    diff_parser.add_argument(
+        "--role-arn",
+        help="Optional role ARN (overrides ARN in proposal)",
+    )
+
+    diff_parser.add_argument(
+        "--judge-mode",
+        action="store_true",
+        help="Use deterministic mock data",
+    )
+
+    # ===== STATUS COMMAND =====
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Check status of recent policy rollouts for a role",
+    )
+
+    status_parser.add_argument(
+        "--role-arn",
+        required=True,
+        help="IAM role ARN to check",
+    )
+
+    status_parser.add_argument(
+        "--state-machine-arn",
+        required=True,
+        help="Step Functions state machine ARN",
+    )
+
+    status_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Number of recent rollouts to show (default: 5)",
+    )
+
+    status_parser.add_argument(
+        "--judge-mode",
+        action="store_true",
+        help="Use deterministic mock data",
+    )
+
+    # ===== ROLLBACK COMMAND =====
+    rollback_parser = subparsers.add_parser(
+        "rollback",
+        help="Emergency rollback to original policy state",
+    )
+
+    rollback_parser.add_argument(
+        "--proposal",
+        required=True,
+        help="Path to proposal JSON that should be reverted",
+    )
+
+    rollback_parser.add_argument(
+        "--state-machine-arn",
+        required=True,
+        help="Step Functions state machine ARN",
+    )
+
+    rollback_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without executing",
+    )
+
+    rollback_parser.add_argument(
+        "--judge-mode",
+        action="store_true",
+        help="Use deterministic mock execution",
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -304,6 +391,29 @@ def main() -> None:
                 rollback_threshold=args.rollback_threshold,
                 require_approval=args.require_approval,
                 approval_table=args.approval_table,
+                dry_run=args.dry_run,
+                judge_mode=args.judge_mode,
+            )
+
+        elif args.command == "diff":
+            exit_code = run_diff(
+                proposal_path=args.input,
+                role_arn=args.role_arn,
+                judge_mode=args.judge_mode,
+            )
+
+        elif args.command == "status":
+            exit_code = run_status(
+                role_arn=args.role_arn,
+                state_machine_arn=args.state_machine_arn,
+                limit=args.limit,
+                judge_mode=args.judge_mode,
+            )
+
+        elif args.command == "rollback":
+            exit_code = run_rollback(
+                proposal_path=args.proposal,
+                state_machine_arn=args.state_machine_arn,
                 dry_run=args.dry_run,
                 judge_mode=args.judge_mode,
             )

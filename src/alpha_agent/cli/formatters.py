@@ -55,12 +55,22 @@ def format_terminal_summary(
 
     # Policy Changes
     if diff:
+        total_before = len(diff.removed_actions) + len(diff.added_actions) # Approximation
         reduction_pct = (len(diff.removed_actions) / max(len(diff.removed_actions) + len(diff.added_actions), 1)) * 100
-        lines.append(f"{Colors.BOLD}Policy Changes{Colors.END}")
-        lines.append(f"  {Colors.GREEN}✓{Colors.END} Added actions: {len(diff.added_actions)}")
-        lines.append(f"  {Colors.RED}✗{Colors.END} Removed actions: {len(diff.removed_actions)}")
-        lines.append(f"  {Colors.CYAN}📊{Colors.END} Privilege reduction: {reduction_pct:.1f}%")
+        
+        lines.append(f"{Colors.BOLD}Policy Change Summary{Colors.END}")
+        lines.append(f"  {Colors.GREEN}󰄬 Added{Colors.END}:    {len(diff.added_actions):>3} actions")
+        lines.append(f"  {Colors.RED}󰅙 Removed{Colors.END}:  {len(diff.removed_actions):>3} actions")
+        lines.append(f"  {Colors.CYAN}󱕊 Reduction{Colors.END}: {Colors.BOLD}{reduction_pct:.1f}%{Colors.END}")
         lines.append("")
+
+        if diff.added_actions:
+            lines.append(f"{Colors.BOLD}Top Added Actions:{Colors.END}")
+            for action in diff.added_actions[:5]:
+                lines.append(f"  {Colors.GREEN}+ {action}{Colors.END}")
+            if len(diff.added_actions) > 5:
+                lines.append(f"    ... and {len(diff.added_actions) - 5} more")
+            lines.append("")
 
     # Guardrail Violations
     if proposal.guardrail_violations:

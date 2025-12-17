@@ -265,6 +265,15 @@ poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode
 # Real analysis (30-90s, ~$0.25)
 poetry run alpha analyze --role-arn "$ROLE_ARN" --output proposal.json
 
+# Check for drift (Day 2 Ops)
+poetry run alpha diff --input proposal.json
+
+# Monitor rollout status
+poetry run alpha status --role-arn "$ROLE_ARN" --state-machine-arn "$ARN"
+
+# Emergency rollback
+poetry run alpha rollback --proposal proposal.json --state-machine-arn "$ARN"
+
 # With all outputs
 poetry run alpha analyze \
   --role-arn "$ROLE_ARN" \
