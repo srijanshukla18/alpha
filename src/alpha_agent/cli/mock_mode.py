@@ -1,8 +1,8 @@
 """
-Judge Mode - Deterministic offline simulation for demos and testing.
+Mock Mode - Deterministic offline simulation for testing and local development.
 
 Provides mock data that mimics real AWS API responses without requiring credentials.
-Perfect for hackathon demos, CI testing, and offline development.
+Useful for CI testing, local development, and dry-run validations.
 """
 from __future__ import annotations
 
@@ -68,9 +68,9 @@ MOCK_PROPOSED_POLICY = PolicyDocument(
 )
 
 
-class JudgeModeProvider:
+class MockModeProvider:
     """
-    Provides deterministic mock data for offline ALPHA demonstrations.
+    Provides deterministic mock data for offline ALPHA operations.
 
     All methods return data structures identical to real AWS API responses,
     but without making actual API calls.
@@ -79,7 +79,7 @@ class JudgeModeProvider:
     def __init__(self, seed: int = 42):
         """Initialize with optional seed for reproducibility."""
         self.seed = seed
-        LOGGER.info("Judge mode active - using deterministic mock data")
+        LOGGER.info("Mock mode active - using deterministic mock data")
 
     def get_cloudtrail_activity(
         self,
@@ -88,10 +88,8 @@ class JudgeModeProvider:
     ) -> Dict[str, int]:
         """
         Return mock CloudTrail activity statistics.
-
-        Simulates IAM Access Analyzer's policy generation analysis.
         """
-        LOGGER.info("JUDGE MODE: Returning mock CloudTrail activity (%d days)", usage_days)
+        LOGGER.info("MOCK MODE: Returning mock CloudTrail activity (%d days)", usage_days)
         return MOCK_CLOUDTRAIL_ACTIVITY.copy()
 
     def generate_policy_from_activity(
@@ -101,19 +99,15 @@ class JudgeModeProvider:
     ) -> PolicyDocument:
         """
         Return mock generated policy based on activity.
-
-        Simulates Access Analyzer's GeneratePolicy API.
         """
-        LOGGER.info("JUDGE MODE: Generating mock least-privilege policy")
+        LOGGER.info("MOCK MODE: Generating mock least-privilege policy")
         return MOCK_PROPOSED_POLICY.model_copy(deep=True)
 
-    def get_current_policy(self, role_arn: str) -> PolicyDocument:
+    def get_mock_policy(self, role_arn: str) -> PolicyDocument:
         """
         Return mock current policy (wildcard permissions).
-
-        Simulates IAM GetRolePolicy API.
         """
-        LOGGER.info("JUDGE MODE: Returning mock current policy")
+        LOGGER.info("MOCK MODE: Returning mock current policy")
         return MOCK_CURRENT_POLICY.model_copy(deep=True)
 
     def invoke_bedrock_reasoning(
@@ -123,10 +117,8 @@ class JudgeModeProvider:
     ) -> PolicyProposal:
         """
         Return mock Bedrock reasoning response.
-
-        Simulates Claude Sonnet 4.5 policy analysis.
         """
-        LOGGER.info("JUDGE MODE: Simulating Bedrock reasoning")
+        LOGGER.info("MOCK MODE: Simulating Bedrock reasoning")
 
         return PolicyProposal(
             proposed_policy=MOCK_PROPOSED_POLICY.model_copy(deep=True),
@@ -161,47 +153,37 @@ class JudgeModeProvider:
     ) -> str:
         """
         Return mock Step Functions execution ARN.
-
-        Simulates StartExecution API.
         """
-        LOGGER.info("JUDGE MODE: Simulating Step Functions execution start")
+        LOGGER.info("MOCK MODE: Simulating Step Functions execution start")
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"arn:aws:states:us-east-1:123456789012:execution:AlphaSM:mock-{timestamp}"
 
     def check_approval_status(self, proposal_id: str) -> bool:
         """
         Return mock approval status.
-
-        In judge mode, always returns approved for demo flow.
         """
-        LOGGER.info("JUDGE MODE: Returning mock approval (approved=True)")
+        LOGGER.info("MOCK MODE: Returning mock approval (approved=True)")
         return True
 
     def record_audit_trail(self, audit_data: Dict[str, Any]) -> None:
         """
         Mock DynamoDB audit record creation.
-
-        In judge mode, just logs the data.
         """
-        LOGGER.info("JUDGE MODE: Would record audit: %s", json.dumps(audit_data, indent=2))
+        LOGGER.info("MOCK MODE: Would record audit: %s", json.dumps(audit_data, indent=2))
 
 
-def is_judge_mode() -> bool:
+def is_mock_mode() -> bool:
     """
-    Detect if we're running in judge mode.
-
-    Checks for:
-    1. --judge-mode CLI flag (handled by command)
-    2. ALPHA_JUDGE_MODE environment variable
+    Detect if we're running in mock mode.
     """
     import os
-    return os.getenv("ALPHA_JUDGE_MODE", "").lower() in ("1", "true", "yes")
+    return os.getenv("ALPHA_MOCK_MODE", "").lower() in ("1", "true", "yes")
 
 
-def get_provider() -> JudgeModeProvider | None:
+def get_provider() -> MockModeProvider | None:
     """
-    Get judge mode provider if active, otherwise None.
+    Get mock mode provider if active, otherwise None.
     """
-    if is_judge_mode():
-        return JudgeModeProvider()
+    if is_mock_mode():
+        return MockModeProvider()
     return None

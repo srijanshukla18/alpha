@@ -43,14 +43,14 @@ Notes
 - To force Analyzer mode, add `--no-fast`.
 - If Bedrock model access isn’t enabled, ALPHA falls back and still emits outputs.
 
-## Option B: Judge Mode (offline, deterministic)
+## Option B: Mock Mode (offline, deterministic)
 
 Great for offline demos; no AWS calls; same output every time.
 
 ```bash
 poetry run alpha analyze \
   --role-arn arn:aws:iam::123456789012:role/TestRole \
-  --judge-mode \
+  --mock-mode \
   --output proposal.json \
   --output-cloudformation cfn-patch.yml \
   --output-terraform tf-patch.tf
@@ -219,7 +219,7 @@ Create analyzer first:
 Enable the specific model (Anthropic/Nova) in Bedrock → Model access; ensure your principal has `bedrock:InvokeModel`.
 
 ### "No CloudTrail events found"
-The role may have no recent activity. Try `--usage-days 1`, or use judge mode.
+The role may have no recent activity. Try `--usage-days 1`, or use mock mode.
 
 ### "Exit code 2 (risky)"
 Bedrock estimated >10% break probability. Review:
@@ -242,7 +242,7 @@ Options:
 
 ## Cost Estimate
 
-**Judge mode:** $0 (no AWS calls)
+**Mock mode:** $0 (no AWS calls)
 
 **Real mode per role:**
 - IAM Access Analyzer: ~$0.20 (GeneratePolicy API)
@@ -259,8 +259,8 @@ Options:
 ## Quick Reference
 
 ```bash
-# Judge mode (offline, instant, $0)
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode
+# Mock mode (offline, instant, $0)
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --mock-mode
 
 # Real analysis (30-90s, ~$0.25)
 poetry run alpha analyze --role-arn "$ROLE_ARN" --output proposal.json
@@ -296,7 +296,7 @@ poetry run alpha apply --state-machine-arn "$ARN" --proposal proposal.json --dry
 
 ## Next Steps
 
-1. **Try judge mode first** to learn the tool
+1. **Try mock mode first** to learn the tool
 2. **Analyze a non-critical role** in your account
 3. **Review the proposal** before applying anything
 4. **Deploy infrastructure** only if you want full automation

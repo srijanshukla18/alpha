@@ -1,95 +1,44 @@
-# Architecture Diagrams for ALPHA
+# ALPHA Architecture Diagrams
 
-This directory contains Python scripts to generate AWS architecture diagrams with official AWS service icons.
+This directory contains code-based definitions for ALPHA's system architecture, ensuring documentation stays in sync with implementation.
 
-## Prerequisites
+## Generation Setup
+
+Requires Graphviz and the `diagrams` library.
 
 ```bash
-# Install diagrams library
-pip install diagrams
-
-# Install Graphviz (macOS)
+# MacOS
 brew install graphviz
-
-# Or if using Poetry (recommended)
 poetry add diagrams --group dev
 ```
 
-## Generate Diagrams
+## Available Diagrams
 
-### Simple Overview (for pitch/demo)
+### 1. Simple Overview
+Focuses on the core Analyze-Propose-Apply workflow.
 ```bash
-cd docs
-python3 architecture_simple.py
-# Outputs: alpha_architecture_simple.png
+python3 docs/architecture_simple.py
+# Outputs: docs/alpha_architecture_simple.png
 ```
+**Use for:** README overview, high-level stakeholder presentations.
 
-**Use for:** Hackathon pitch slides, README hero image, 3-minute demo backdrop
-
-### Detailed Technical (for submission)
+### 2. Detailed Technical Diagram
+Deep dive into Step Functions, Bedrock integration, and AgentCore Runtime.
 ```bash
-cd docs
-python3 architecture_detailed.py
-# Outputs: alpha_architecture_detailed.png
+python3 docs/architecture_detailed.py
+# Outputs: docs/alpha_architecture_detailed.png
 ```
+**Use for:** SRE system reviews, security audits, technical deep-dives.
 
-**Use for:** Devpost submission "Architecture diagram" requirement, technical deep-dive, judge review
+## Customization
 
-## What Gets Generated
+Diagrams are defined in Python using the [Diagrams](https://diagrams.mingrammer.com/) library. To modify:
+1. Edit `docs/architecture_detailed.py`.
+2. Update service nodes or edge labels.
+3. Rerun the script to regenerate the PNG.
 
-- **PNG files** with official AWS service icons
-- **Transparent background** (easy to overlay on slides)
-- **Professional quality** (same icons AWS uses in docs)
-- **Version controlled** (commit the .py files, regenerate anytime)
-
-## Customization Tips
-
-### Change direction
-```python
-with Diagram("ALPHA", direction="TB"):  # TB = top-to-bottom, LR = left-to-right
-```
-
-### Change colors for emphasis
-```python
-user >> Edge(label="critical path", color="red") >> service
-```
-
-### Add more services
-```python
-from diagrams.aws.network import APIGateway
-gateway = APIGateway("API Gateway")
-```
-
-Full icon library: https://diagrams.mingrammer.com/docs/nodes/aws
-
-## Alternative Tools (if you prefer GUI)
-
-### 1. Cloudcraft (easiest)
-- **URL:** https://www.cloudcraft.co/
-- **Pros:** Drag-and-drop, 3D isometric view, AWS-specific
-- **Cons:** Free tier limited to public diagrams
-- **Best for:** Quick mockups, visually stunning diagrams
-
-### 2. draw.io / diagrams.net (most flexible)
-- **URL:** https://app.diagrams.net/
-- **Pros:** Completely free, AWS icon library built-in, exports PNG/SVG
-- **Cons:** Manual layout, not code-based
-- **Best for:** Custom layouts, iterative design
-
-**AWS icon library:** File → Open Library → Search "AWS" → Load AWS19 icons
-
-### 3. Lucidchart (professional)
-- **URL:** https://www.lucidchart.com/
-- **Pros:** Polished templates, collaboration features
-- **Cons:** Free tier limited
-- **Best for:** Team collaboration
-
-## Recommended for Hackathon Submission
-
-**Use `architecture_detailed.py`** for the Devpost "Architecture diagram" requirement because:
-1. Shows all components judges want to see (Bedrock, AgentCore, Step Functions)
-2. Labels data flow clearly
-3. Official AWS branding = professional credibility
-4. Fits "Technical Execution (50%)" judging criteria
-
-**Tip:** Export both PNG and add the .py file to your repo. Judges love seeing "infrastructure as code" extending to diagrams.
+## Alternative GUI Tools
+If manual layout is required, we recommend the official AWS icon sets in:
+- **Cloudcraft:** Isometric 3D views for infrastructure.
+- **draw.io / diagrams.net:** Most flexible for custom flow layouts.
+- **Lucidchart:** Best for collaborative design sessions.

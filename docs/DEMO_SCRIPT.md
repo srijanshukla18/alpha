@@ -1,70 +1,82 @@
-# ALPHA – 3‑Minute Demo Script
+# Operational Walkthrough (SRE Guide)
 
-Use this script with demo_repl.py to narrate a reliable 3‑minute demo that shows fast analysis, guardrails, Step Functions rollout, and AgentCore Runtime. The REPL pauses at each step so you can talk while pressing Enter to advance (or 's' to skip).
+Use this guide to demonstrate the full lifecycle of ALPHA in a production-like environment. 
 
-## Prep (off‑camera)
+## Prerequisites
 
-- export ROLE_ARN=arn:aws:iam::097607620475:role/AlphaDemoRole
-- export AWS_REGION=us-east-1
-- Optional: export ALPHA_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
-- Optional (for rollout): export STATE_MACHINE_ARN=arn:aws:states:us-east-1:...:stateMachine:AlphaMinimalRollout
-- Optional (AgentCore): Deploy once off‑camera (takes a minute) so we only run status/invoke on‑camera:
-  - uv run agentcore configure -e src/alpha_agent/agentcore_entrypoint.py
-  - uv run agentcore launch
+- `export ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/TargetRole`
+- `export SFN_ARN=arn:aws:states:REGION:ACCOUNT_ID:stateMachine:AlphaRollout`
+- `poetry install`
 
-Sanity:
-- aws sts get-caller-identity
-- poetry run alpha --version
+---
 
-## Run the demo (3:00) with the REPL
+## Phase 1: High-Confidence Hardening
 
-Start the REPL:
+### 1. Analyze with Bedrock Rationale
+Demonstrate how ALPHA generates a policy and explains its reasoning.
+```bash
+alpha analyze --role-arn "$ROLE_ARN" --output proposal.json
 ```
-python3 demo_repl.py --role-arn "$ROLE_ARN" --state-machine-arn "$STATE_MACHINE_ARN"
+*Key points to mention:*
+- **Fast Mode:** Finishes in seconds using CloudTrail Event History.
+- **Rationale:** AI explains why certain permissions are kept vs. removed.
+- **Risk Signal:** Quantitative probability of causing a production outage.
+
+### 2. Peer Review Integration
+Show how ALPHA generates IaC patches and PR content.
+```bash
+cat proposal.json | jq '.proposal.proposed_policy'
+# Or check the generated cfn/tf files if --output-terraform was used.
 ```
 
-0:00–0:15 — Hook
-- Say: “95% of IAM permissions are never used. Copy‑pasted policies ship ‘s3:*’ into prod. ALPHA fixes this in seconds — not weeks.”
+---
 
-0:15–0:25 — One‑liner
-- Say: “ALPHA analyzes real CloudTrail activity, proposes least‑privilege with Bedrock reasoning, enforces guardrails, and can roll out safely via Step Functions.”
+## Phase 2: Safe Staged Rollout
 
-0:25–1:20 — REPL Step: Analyze (fast, real AWS)
-- Press Enter to run analyze
-- Say while it runs: “Fast mode is default — no Access Analyzer job — so it completes in seconds using CloudTrail Event History.”
-- When outputs list appears, say: “We get rationale, a risk score, and ready‑to‑paste CloudFormation and Terraform patches.”
-
-1:20–1:40 — REPL Step: Guardrails (prod)
-- Press Enter to run prod guardrails check
-- Say: “In prod preset, guardrails block risky services and wildcards — the REPL prints a non‑zero exit code.”
-
-1:40–2:10 — REPL Steps: Step Functions (dry‑run → live)
-- Dry‑run: Press Enter to show the execution payload
-- Say: “This is the payload our state machine receives.”
-- Live: Press Enter to start a real execution (Pass‑only workflow finishes instantly)
-- Say: “Approvals off by default for demo; one flag adds DynamoDB approvals. Console link prints here.”
-
-2:25–2:45 — CI/CD story
-- Say: “Exit codes: 0 safe, 1 tool error, 2 risky (>10%), 3 guardrail violation — pipelines block unsafe changes automatically.”
-
-2:45–3:00 — Close
-- Say: “In under a minute of runtime, we produced an explainable least‑privilege policy from real usage, enforced guardrails, and kicked off a safe rollout. Practical today; Analyzer path available when you want deeper scoping.”
-
-## Contingencies (keep moving if these trigger)
-- No Bedrock access → ALPHA falls back and still emits outputs; mention “graceful fallback.”
-- No CloudTrail events → try `--usage-days 7` or judge mode:
+### 3. Dry-Run & Approval Check
+Verify the deployment payload before triggering the Step Function.
+```bash
+alpha apply --state-machine-arn "$SFN_ARN" --proposal proposal.json --dry-run
 ```
-poetry run alpha analyze --role-arn arn:aws:iam::123456789012:role/TestRole --judge-mode --output proposal.json
+
+### 4. Live Staged Deployment
+Trigger the canary rollout (10% traffic).
+```bash
+alpha apply --state-machine-arn "$SFN_ARN" --proposal proposal.json --canary 10
 ```
-- Analyzer mention (optional): `--no-fast` with `--timeout-seconds` for Access Analyzer.
+*Key points to mention:*
+- **Step Functions:** Orchestrates the validation, canary, and promotion stages.
+- **Monitoring:** The state machine watches for `AccessDenied` spikes during the canary window.
 
-## AgentCore Runtime (on‑camera, ~40s)
+---
 
-- Pre‑deploy off‑camera (configure + launch). On‑camera we do status and two quick invocations via the REPL.
-- Narration:
-  - “These primitives are deployed as managed endpoints (single entrypoint with an action).”
-  - “We’ll call analyze_fast_policy and enforce_policy_guardrails.”
-- In the REPL:
-  - Press Enter for `agentcore status`
-  - Press Enter to invoke `analyze_fast_policy` (fast)
-  - Press Enter to invoke `enforce_policy_guardrails` on a toy wildcard policy (shows violations)
+## Phase 3: Day 2 Operations
+
+### 5. Monitoring Status
+Check the progress of the rollout without leaving the terminal.
+```bash
+alpha status --role-arn "$ROLE_ARN" --state-machine-arn "$SFN_ARN"
+```
+
+### 6. Drift Detection (The SRE Secret Weapon)
+Show how to detect if a role has been manually over-privileged since the last ALPHA run.
+```bash
+# Simulate drift by manually adding a policy to the role, then run:
+alpha diff --input proposal.json
+```
+
+### 7. Emergency Rollback
+Demonstrate the "Undo" button for IAM.
+```bash
+alpha rollback --proposal proposal.json --state-machine-arn "$SFN_ARN"
+```
+
+---
+
+## Testing & Development
+
+### Mock Mode (No AWS/Bedrock Required)
+Show how developers can test their CI pipelines locally without AWS credentials.
+```bash
+alpha analyze --role-arn arn:aws:iam::123:role/MockRole --mock-mode
+```

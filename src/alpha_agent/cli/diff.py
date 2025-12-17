@@ -19,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 def run_diff(
     proposal_path: str,
     role_arn: str | None = None,
-    judge_mode: bool = False,
+    mock_mode: bool = False,
 ) -> int:
     """
     Compare proposal against live role state.
@@ -39,12 +39,12 @@ def run_diff(
 
         print(f"\n🔍 {Colors.BOLD}Diffing proposal against live role:{Colors.END} {target_role}")
 
-        if judge_mode:
-            print(f"🎭 {Colors.CYAN}Judge Mode: Simulating diff...{Colors.END}")
-            # In judge mode, we just use the diff from the proposal file if it exists,
+        if mock_mode:
+            print(f"🎭 {Colors.CYAN}Mock Mode: Simulating diff...{Colors.END}")
+            # In mock mode, we just use the diff from the proposal file if it exists,
             # otherwise we mock one.
-            from alpha_agent.cli.judge_mode import JudgeModeProvider
-            provider = JudgeModeProvider()
+            from alpha_agent.cli.mock_mode import MockModeProvider
+            provider = MockModeProvider()
             live_policy = provider.get_mock_policy(target_role)
         else:
             # Real mode: fetch from AWS

@@ -13,7 +13,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from alpha_agent.cli import EXIT_SUCCESS, EXIT_ERROR
-from alpha_agent.cli.judge_mode import JudgeModeProvider
+from alpha_agent.cli.mock_mode import MockModeProvider
 from alpha_agent.approvals import ApprovalStore
 from alpha_agent.models import PolicyProposal
 
@@ -29,7 +29,7 @@ def run_apply(
     require_approval: bool = False,
     approval_table: str | None = None,
     dry_run: bool = False,
-    judge_mode: bool = False,
+    mock_mode: bool = False,
 ) -> int:
     """
     Apply policy via Step Functions staged rollout.
@@ -51,9 +51,9 @@ def run_apply(
         if require_approval:
             print(f"\n🔍 Checking approval status...")
 
-            if judge_mode:
-                # Judge mode: always approved
-                provider = JudgeModeProvider()
+            if mock_mode:
+                # Mock mode: always approved
+                provider = MockModeProvider()
                 approved = provider.check_approval_status(role_arn)
             else:
                 # Real mode: query DynamoDB
@@ -96,10 +96,10 @@ def run_apply(
             return EXIT_SUCCESS
 
         # Start execution
-        if judge_mode:
-            # Judge mode: mock execution
-            print(f"\n🎭 Judge Mode: Simulating Step Functions execution...")
-            provider = JudgeModeProvider()
+        if mock_mode:
+            # Mock mode: mock execution
+            print(f"\n🎭 Mock Mode: Simulating Step Functions execution...")
+            provider = MockModeProvider()
             execution_arn = provider.start_step_functions_execution(state_machine_arn, input_payload)
         else:
             # Real mode: start actual execution

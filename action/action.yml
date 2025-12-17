@@ -34,7 +34,7 @@ inputs:
     description: 'Path to save proposal JSON (default: alpha-proposal.json)'
     required: false
     default: 'alpha-proposal.json'
-  judge_mode:
+  mock_mode:
     description: 'Use deterministic mock data for testing (true/false)'
     required: false
     default: 'false'
@@ -144,7 +144,7 @@ runs:
           [ -n "${{ inputs.exclude_services }}" ] && CMD="$CMD --exclude-services ${{ inputs.exclude_services }}"
           [ -n "${{ inputs.suppress_actions }}" ] && CMD="$CMD --suppress-actions ${{ inputs.suppress_actions }}"
           [ -n "${{ inputs.baseline_policy_name }}" ] && CMD="$CMD --baseline-policy-name ${{ inputs.baseline_policy_name }}"
-          [ "${{ inputs.judge_mode }}" == "true" ] && CMD="$CMD --judge-mode"
+          [ "${{ inputs.mock_mode }}" == "true" ] && CMD="$CMD --mock-mode"
 
         elif [ "${{ inputs.mode }}" == "propose" ]; then
           CMD="alpha propose --repo ${{ inputs.repo }}"
@@ -165,7 +165,7 @@ runs:
           [ "${{ inputs.require_approval }}" == "true" ] && CMD="$CMD --require-approval"
           [ -n "${{ inputs.approval_table }}" ] && CMD="$CMD --approval-table ${{ inputs.approval_table }}"
           [ "${{ inputs.dry_run }}" == "true" ] && CMD="$CMD --dry-run"
-          [ "${{ inputs.judge_mode }}" == "true" ] && CMD="$CMD --judge-mode"
+          [ "${{ inputs.mock_mode }}" == "true" ] && CMD="$CMD --mock-mode"
         else
           echo "❌ Invalid mode: ${{ inputs.mode }}"
           exit 1

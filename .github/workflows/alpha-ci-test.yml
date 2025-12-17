@@ -1,4 +1,4 @@
-name: ALPHA - CI Test (Judge Mode)
+name: ALPHA - CI Test (Mock Mode)
 
 on:
   pull_request:
@@ -11,8 +11,8 @@ on:
       - main
 
 jobs:
-  test-judge-mode:
-    name: Test ALPHA in Judge Mode
+  test-mock-mode:
+    name: Test ALPHA in Mock Mode
     runs-on: ubuntu-latest
 
     steps:
@@ -32,11 +32,11 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
-      - name: Test analyze command (Judge Mode)
+      - name: Test analyze command (Mock Mode)
         run: |
           poetry run alpha analyze \
             --role-arn arn:aws:iam::123456789012:role/TestRole \
-            --judge-mode \
+            --mock-mode \
             --output test-proposal.json \
             --guardrails prod
 
@@ -58,7 +58,7 @@ jobs:
           # Test success case
           poetry run alpha analyze \
             --role-arn arn:aws:iam::123456789012:role/SafeRole \
-            --judge-mode \
+            --mock-mode \
             --guardrails none
           test $? -eq 0 || (echo "❌ Expected exit code 0" && exit 1)
 
@@ -81,7 +81,7 @@ jobs:
           poetry run alpha apply \
             --state-machine-arn arn:aws:states:us-east-1:123:stateMachine/Test \
             --proposal test-proposal.json \
-            --judge-mode \
+            --mock-mode \
             --dry-run
 
           test $? -eq 0 || (echo "❌ Apply dry-run failed" && exit 1)

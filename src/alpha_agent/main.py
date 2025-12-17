@@ -9,8 +9,8 @@ Commands:
   apply    - Execute staged rollout via Step Functions
 
 Examples:
-  # Analyze a role (judge mode for demo)
-  alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --judge-mode
+  # Analyze a role (mock mode for demo)
+  alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --mock-mode
 
   # Analyze with real AWS APIs
   alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --output proposal.json
@@ -106,7 +106,7 @@ def main() -> None:
     )
 
     analyze_parser.add_argument(
-        "--judge-mode",
+        "--mock-mode",
         action="store_true",
         help="Use deterministic mock data for offline demo (no AWS calls)",
     )
@@ -249,7 +249,7 @@ def main() -> None:
     )
 
     apply_parser.add_argument(
-        "--judge-mode",
+        "--mock-mode",
         action="store_true",
         help="Use deterministic mock execution (no AWS calls)",
     )
@@ -272,7 +272,7 @@ def main() -> None:
     )
 
     diff_parser.add_argument(
-        "--judge-mode",
+        "--mock-mode",
         action="store_true",
         help="Use deterministic mock data",
     )
@@ -303,7 +303,7 @@ def main() -> None:
     )
 
     status_parser.add_argument(
-        "--judge-mode",
+        "--mock-mode",
         action="store_true",
         help="Use deterministic mock data",
     )
@@ -333,7 +333,7 @@ def main() -> None:
     )
 
     rollback_parser.add_argument(
-        "--judge-mode",
+        "--mock-mode",
         action="store_true",
         help="Use deterministic mock execution",
     )
@@ -363,7 +363,7 @@ def main() -> None:
                 baseline_policy_name=args.baseline_policy_name,
                 exclude_services=exclude_services,
                 suppress_actions=suppress_actions,
-                judge_mode=args.judge_mode,
+                mock_mode=args.mock_mode,
                 output_cloudformation=args.output_cloudformation,
                 output_terraform=args.output_terraform,
                 timeout_seconds=args.timeout_seconds,
@@ -392,14 +392,14 @@ def main() -> None:
                 require_approval=args.require_approval,
                 approval_table=args.approval_table,
                 dry_run=args.dry_run,
-                judge_mode=args.judge_mode,
+                mock_mode=args.mock_mode,
             )
 
         elif args.command == "diff":
             exit_code = run_diff(
                 proposal_path=args.input,
                 role_arn=args.role_arn,
-                judge_mode=args.judge_mode,
+                mock_mode=args.mock_mode,
             )
 
         elif args.command == "status":
@@ -407,7 +407,7 @@ def main() -> None:
                 role_arn=args.role_arn,
                 state_machine_arn=args.state_machine_arn,
                 limit=args.limit,
-                judge_mode=args.judge_mode,
+                mock_mode=args.mock_mode,
             )
 
         elif args.command == "rollback":
@@ -415,7 +415,7 @@ def main() -> None:
                 proposal_path=args.proposal,
                 state_machine_arn=args.state_machine_arn,
                 dry_run=args.dry_run,
-                judge_mode=args.judge_mode,
+                mock_mode=args.mock_mode,
             )
 
         else:

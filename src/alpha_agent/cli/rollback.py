@@ -19,7 +19,7 @@ def run_rollback(
     proposal_path: str,
     state_machine_arn: str,
     dry_run: bool = False,
-    judge_mode: bool = False,
+    mock_mode: bool = False,
 ) -> int:
     """
     Rollback a policy change using the original policy stored in the proposal.
@@ -86,7 +86,7 @@ def run_rollback(
                 rollback_threshold="None", # We are already rolling back
                 require_approval=False, # SRE bypass for emergency
                 dry_run=dry_run,
-                judge_mode=judge_mode
+                mock_mode=mock_mode
             )
         finally:
             if os.path.exists(tmp_path):

@@ -17,7 +17,7 @@ from alpha_agent.cli.formatters import (
     format_cloudformation_patch,
     format_terraform_patch,
 )
-from alpha_agent.cli.judge_mode import JudgeModeProvider
+from alpha_agent.cli.mock_mode import MockModeProvider
 from alpha_agent.collector import generate_policy, PolicyGenerationRequest
 from alpha_agent.fast_collector import generate_policy_fast
 from alpha_agent.diff import compute_policy_diff, fetch_inline_policy
@@ -55,7 +55,7 @@ def run_analyze(
     baseline_policy_name: str | None = None,
     exclude_services: list[str] | None = None,
     suppress_actions: list[str] | None = None,
-    judge_mode: bool = False,
+    mock_mode: bool = False,
     output_cloudformation: str | None = None,
     output_terraform: str | None = None,
     timeout_seconds: int | None = None,
@@ -80,9 +80,9 @@ def run_analyze(
             guardrail_config["blocked_actions"].extend(suppress_actions)
 
         # Analyze based on mode
-        if judge_mode or os.getenv("ALPHA_JUDGE_MODE"):
-            print(f"🎭 Judge Mode: Using deterministic mock data\n")
-            provider = JudgeModeProvider()
+        if mock_mode or os.getenv("ALPHA_MOCK_MODE"):
+            print(f"🎭 Mock Mode: Using deterministic mock data\n")
+            provider = MockModeProvider()
 
             # Get mock data
             activity = provider.get_cloudtrail_activity(role_arn, usage_days)
@@ -208,7 +208,7 @@ def run_analyze(
                     "role_arn": role_arn,
                     "usage_days": usage_days,
                     "guardrails": guardrails,
-                    "mode": "judge" if judge_mode else "real",
+                    "mode": "mock" if mock_mode else "real",
                     "exit_code": exit_code,
                 },
             )

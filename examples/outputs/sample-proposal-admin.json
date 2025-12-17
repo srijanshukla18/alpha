@@ -81,7 +81,7 @@
     "role_arn": "arn:aws:iam::123456789012:role/OverprivilegedAdminRole",
     "usage_days": 30,
     "guardrails": "prod",
-    "mode": "judge",
+    "mode": "mock",
     "exit_code": 0,
     "generated_at": "2025-10-18T10:30:00Z",
     "alpha_version": "1.0.0"

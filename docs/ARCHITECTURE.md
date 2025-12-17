@@ -1,87 +1,47 @@
-# ALPHA Architecture (Condensed)
+# ALPHA Architecture
 
-This document reflects the current implementation (fast mode default, Analyzer optional, Bedrock model override).
+ALPHA is a CLI-first agent designed for the full lifecycle of IAM least-privilege hardening.
 
-## High‑Level
+## Core Components
 
-- Fast collector (default): CloudTrail Event History → best‑effort actions (Resource "*")
-- Analyzer collector (optional): IAM Access Analyzer → resource‑scoped actions from trails
-- Reasoning: Bedrock (Claude or Nova Pro), provider‑aware payloads with graceful fallback
-- Guardrails: post‑processing constraints; CI exit codes for gating
-- Outputs: JSON, CFN, TF; optional PR and staged rollout
+### 1. Policy Collectors
+- **Fast Mode (Default):** Queries `cloudtrail:LookupEvents` to map recent activity to IAM actions. Minimal latency, best-effort scoping.
+- **Analyzer Mode:** Orchestrates IAM Access Analyzer (`StartPolicyGeneration`) for resource-scoped policies based on historical trails.
 
-## Analyze Flow
+### 2. Bedrock Reasoning
+Uses LLMs (Claude Sonnet 4.5 or Nova Pro) to:
+- Assess probability of breakage based on usage patterns.
+- Provide human-readable rationale for SRE review.
+- Suggest remediation steps for identified risks.
+- *Fallback:* A rule-based engine provides basic safety signals if Bedrock is unavailable.
 
-1) Collect
-   - Fast: `cloudtrail:LookupEvents`; map `eventSource + eventName` → `service:Action`; group by service
-   - Analyzer: `StartPolicyGeneration`; poll `GetGeneratedPolicy`
-2) Reason
-   - Bedrock returns rationale, risk, remediation notes (Anthropic/Nova)
-   - Fallback used if Bedrock not enabled/available
-3) Guardrails
-   - Remove wildcards; block `iam:PassRole` (sandbox) or `iam:*`, `sts:AssumeRole` (prod); enforce region condition; disallow `iam`, `organizations`
-4) Output
-   - Terminal summary, JSON bundle, CFN/TF patches; optional PR
+### 3. Safety Guardrails
+Post-processing engine that enforces hard constraints:
+- Strips wildcards from sensitive actions.
+- Blocks `iam:PassRole`, `sts:AssumeRole`, and organizational management actions.
+- Enforces regional restrictions and mandatory condition keys.
+- Triggers non-zero exit codes (0/2/3) to gate CI/CD pipelines.
 
-## Orchestration (optional)
+### 4. Lifecycle Orchestration
+- **Drift Detection:** Compares local proposal files against live IAM role states.
+- **Staged Rollout:** Triggers AWS Step Functions (via `alpha apply`) for canary deployments.
+- **Rollback:** Inverts the proposal logic to restore the pre-hardening state in seconds.
 
-- Minimal workflow: `workflows/minimal_state_machine.asl.json` (all Pass states) for quick demos
-- Production workflow: CDK app under `infra/` (Step Functions + Lambdas + DynamoDB + CloudWatch)
-- `alpha apply` default payload fields: `roleArn`, `environment`, `canaryPercent`, `rollbackThreshold`, `proposal`, `metadata`
+## Data Flow
 
-## Permissions
+1. **Analyze:** Collector → Bedrock → Guardrails → Proposal JSON + IaC Patch (TF/CFN).
+2. **Review:** PR creation via `alpha propose` with embedded risk metrics.
+3. **Deploy:** `alpha apply` → Step Functions → Canary (10%) → Monitor → Promote (100%).
+4. **Ops:** `alpha status` to monitor; `alpha diff` to check for drift; `alpha rollback` for emergencies.
 
-- Fast: `cloudtrail:LookupEvents`, `iam:GetRole*`, `bedrock:InvokeModel`
-- Analyzer: add `access-analyzer:StartPolicyGeneration`, `access-analyzer:GetGeneratedPolicy`
-- Rollout: `states:StartExecution`, `iam:PutRolePolicy/GetRolePolicy`
+## Integration Points
 
-## Bedrock Models
+- **GitHub Actions:** Native composite action in `action/`.
+- **Infrastructure as Code:** Generates ready-to-paste snippets for Terraform and CloudFormation.
+- **AgentCore:** Entrypoint in `src/alpha_agent/agentcore_entrypoint.py` for deploying as a managed service.
 
-- Default: Anthropic Sonnet 4.5 (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`)
-- Nova option: `us.amazon.nova-pro-v1:0`
-- Override via `--bedrock-model` or `ALPHA_BEDROCK_MODEL_ID`
-- If the model isn’t enabled, ALPHA falls back and still emits outputs
+## Security Controls
 
-## Data Models
-
-PolicyDocument, PolicyProposal, PolicyDiff are defined in `src/alpha_agent/models.py` using Pydantic v2.
-
-Example PolicyDocument
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*" }
-  ]
-}
-```
-
-## Security
-
-- Guardrails run after reasoning and can strip risky suggestions
-- Exit codes enable CI gating (0/1/2/3)
-- Judge Mode supports deterministic offline demos
-
-## Deployment
-
-- CLI only (default) – no infra required
-- Orchestrated rollout – deploy CDK in `infra/` (Step Functions, Lambdas, DynamoDB, CloudWatch)
-
-## AgentCore (optional)
-
-- Entrypoint for Runtime: `src/alpha_agent/agentcore_entrypoint.py`
-  - `enforce_policy_guardrails(payload)` → sanitized policy + violations
-  - `analyze_fast_policy(payload)` → best‑effort policy via CloudTrail Event History
-- Tools library (optional): `src/alpha_agent/agentcore.py` defines AgentCoreTools for broader orchestration
-- Hosted handler (optional): `lambdas/agentcore_runtime/handler.py` for managed tool orchestration
-- Use Runtime entrypoint to deploy minimal, production‑friendly endpoints quickly
-
-## Repo Pointers
-
-- CLI entry: `src/alpha_agent/main.py`
-- Analyze: `src/alpha_agent/cli/analyze.py`
-- Fast collector: `src/alpha_agent/fast_collector.py`
-- Analyzer collector: `src/alpha_agent/collector.py`
-- Reasoning: `src/alpha_agent/reasoning.py`
-- Guardrails: `src/alpha_agent/guardrails.py`
-- Formatters: `src/alpha_agent/cli/formatters.py`
+- **Mock Mode:** Deterministic offline execution for testing (`--mock-mode`).
+- **Auditability:** All proposals include the original policy and AI rationale for a permanent audit trail.
+- **Gating:** Exit code `2` (Risky) and `3` (Violation) stop pipelines by default.

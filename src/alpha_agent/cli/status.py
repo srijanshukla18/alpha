@@ -21,15 +21,15 @@ def run_status(
     role_arn: str,
     state_machine_arn: str,
     limit: int = 5,
-    judge_mode: bool = False,
+    mock_mode: bool = False,
 ) -> int:
     """
     Check status of recent rollouts for a role.
     """
     print(f"\n🔍 {Colors.BOLD}Checking rollout status for role:{Colors.END} {role_arn}")
 
-    if judge_mode:
-        print(f"🎭 {Colors.CYAN}Judge Mode: Returning mock rollout status...{Colors.END}")
+    if mock_mode:
+        print(f"🎭 {Colors.CYAN}Mock Mode: Returning mock rollout status...{Colors.END}")
         _print_status_entry(
             execution_id="exec-12345",
             status="SUCCEEDED",

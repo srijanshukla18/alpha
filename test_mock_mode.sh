@@ -1,11 +1,11 @@
 #!/bin/bash
-# End-to-end test script for ALPHA in Judge Mode
+# End-to-end test script for ALPHA in Mock Mode
 # No AWS credentials required - uses deterministic mock data
 
 set -e  # Exit on any error
 
 echo "════════════════════════════════════════════════════════════════"
-echo "  ALPHA End-to-End Test (Judge Mode)"
+echo "  ALPHA End-to-End Test (Mock Mode)"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
@@ -23,12 +23,12 @@ echo ""
 
 # Test 1: Analyze command with all outputs
 echo -e "${BLUE}📊 Test 1: Running analyze command${NC}"
-echo "Command: alpha analyze --role-arn arn:aws:iam::123456789012:role/TestRole --judge-mode --output test-proposal.json --output-cloudformation test-cfn-patch.yml --output-terraform test-tf-patch.tf"
+echo "Command: alpha analyze --role-arn arn:aws:iam::123456789012:role/TestRole --mock-mode --output test-proposal.json --output-cloudformation test-cfn-patch.yml --output-terraform test-tf-patch.tf"
 echo ""
 
 poetry run alpha analyze \
   --role-arn arn:aws:iam::123456789012:role/TestRole \
-  --judge-mode \
+  --mock-mode \
   --output test-proposal.json \
   --output-cloudformation test-cfn-patch.yml \
   --output-terraform test-tf-patch.tf
@@ -50,7 +50,8 @@ if [ -f "test-proposal.json" ]; then
     echo -e "${GREEN}✓ JSON proposal created${NC}"
 
     # Validate JSON structure
-    if command -v jq &> /dev/null; then
+    if command -v jq &> /dev/null;
+    then
         echo "  Validating JSON structure with jq..."
         jq -e '.proposal.proposedPolicy' test-proposal.json > /dev/null && echo -e "  ${GREEN}✓ proposedPolicy present${NC}"
         jq -e '.proposal.riskSignal' test-proposal.json > /dev/null && echo -e "  ${GREEN}✓ riskSignal present${NC}"
@@ -85,15 +86,15 @@ echo ""
 echo -e "${BLUE}🔒 Test 2: Testing guardrail presets${NC}"
 
 echo "  Testing 'none' preset..."
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode --guardrails none > /dev/null
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --mock-mode --guardrails none > /dev/null
 echo -e "  ${GREEN}✓ 'none' preset works${NC}"
 
 echo "  Testing 'sandbox' preset..."
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode --guardrails sandbox > /dev/null
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --mock-mode --guardrails sandbox > /dev/null
 echo -e "  ${GREEN}✓ 'sandbox' preset works${NC}"
 
 echo "  Testing 'prod' preset..."
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --judge-mode --guardrails prod > /dev/null
+poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --mock-mode --guardrails prod > /dev/null
 echo -e "  ${GREEN}✓ 'prod' preset works${NC}"
 echo ""
 
@@ -103,14 +104,14 @@ echo -e "${BLUE}🚫 Test 3: Testing exclusion filters${NC}"
 echo "  Testing exclude-services..."
 poetry run alpha analyze \
   --role-arn arn:aws:iam::123:role/Test \
-  --judge-mode \
+  --mock-mode \
   --exclude-services ec2,rds > /dev/null
 echo -e "  ${GREEN}✓ Service exclusion works${NC}"
 
 echo "  Testing suppress-actions..."
 poetry run alpha analyze \
   --role-arn arn:aws:iam::123:role/Test \
-  --judge-mode \
+  --mock-mode \
   --suppress-actions s3:DeleteBucket,dynamodb:DeleteTable > /dev/null
 echo -e "  ${GREEN}✓ Action suppression works${NC}"
 echo ""
@@ -121,7 +122,7 @@ echo -e "${BLUE}🚀 Test 4: Testing apply command (dry-run)${NC}"
 poetry run alpha apply \
   --state-machine-arn arn:aws:states:us-east-1:123:stateMachine/Test \
   --proposal test-proposal.json \
-  --judge-mode \
+  --mock-mode \
   --dry-run > /dev/null
 
 if [ $? -eq 0 ]; then
@@ -151,7 +152,7 @@ echo "  • test-cfn-patch.yml     - CloudFormation patch"
 echo "  • test-tf-patch.tf       - Terraform patch"
 echo ""
 echo "Try the full workflow:"
-echo "  1. alpha analyze --role-arn <ARN> --judge-mode --output proposal.json"
+echo "  1. alpha analyze --role-arn <ARN> --mock-mode --output proposal.json"
 echo "  2. alpha propose --repo org/repo --branch harden/role --input proposal.json"
 echo "  3. alpha apply --state-machine-arn <ARN> --proposal proposal.json --dry-run"
 echo ""
