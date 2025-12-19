@@ -34,6 +34,7 @@ from alpha_agent.cli.apply import run_apply
 from alpha_agent.cli.diff import run_diff
 from alpha_agent.cli.status import run_status
 from alpha_agent.cli.rollback import run_rollback
+from alpha_agent.cli.audit import run_audit
 
 # Configure logging
 logging.basicConfig(
@@ -316,8 +317,12 @@ def main() -> None:
 
     rollback_parser.add_argument(
         "--proposal",
-        required=True,
-        help="Path to proposal JSON that should be reverted",
+        help="Optional path to proposal JSON that should be reverted",
+    )
+
+    rollback_parser.add_argument(
+        "--role-arn",
+        help="Optional Role ARN to rollback (will lookup history if --proposal is missing)",
     )
 
     rollback_parser.add_argument(
@@ -336,6 +341,32 @@ def main() -> None:
         "--mock-mode",
         action="store_true",
         help="Use deterministic mock execution",
+    )
+
+    # ===== AUDIT COMMAND =====
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Scan account and identify most over-privileged roles",
+    )
+
+    audit_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Number of top over-privileged roles to show (default: 10)",
+    )
+
+    audit_parser.add_argument(
+        "--usage-days",
+        type=int,
+        default=30,
+        help="Window for CloudTrail analysis (default: 30)",
+    )
+
+    audit_parser.add_argument(
+        "--mock-mode",
+        action="store_true",
+        help="Use deterministic mock data",
     )
 
     # Parse arguments
@@ -413,8 +444,16 @@ def main() -> None:
         elif args.command == "rollback":
             exit_code = run_rollback(
                 proposal_path=args.proposal,
+                role_arn=args.role_arn,
                 state_machine_arn=args.state_machine_arn,
                 dry_run=args.dry_run,
+                mock_mode=args.mock_mode,
+            )
+
+        elif args.command == "audit":
+            exit_code = run_audit(
+                limit=args.limit,
+                usage_days=args.usage_days,
                 mock_mode=args.mock_mode,
             )
 

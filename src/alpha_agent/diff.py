@@ -118,3 +118,18 @@ def fetch_all_role_policies(
         version="2012-10-17",
         statement=all_statements
     )
+
+
+def get_role_action_count(role_arn: str, client: Optional[boto3.client] = None) -> int:
+    """
+    Return the total number of actions allowed by a role's policies.
+    Identifies wildcards and expands them if possible (best-effort).
+    """
+    policy = fetch_all_role_policies(role_arn, client)
+    actions = _normalize_actions(policy.statement)
+    
+    # Check for wildcards
+    if "*" in actions:
+        return 10000  # "Infinite" for practical purposes
+        
+    return len(actions)

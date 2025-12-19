@@ -1,167 +1,81 @@
-# ALPHA – Autonomous Least-Privilege Hardening Agent
+# ALPHA – The "Undo" Button for IAM
 
-**Stop fear-based IAM management.** ALPHA is an AI agent that right-sizes IAM policies from real usage with a built-in safety net. It doesn't just generate policies; it manages their entire lifecycle.
+**Autonomous Least-Privilege with a Safety Net.**
 
+ALPHA is a production-grade agent that rightsizes IAM policies based on real usage telemetry. It turns the "fear of breaking production" into a non-issue with AI-powered risk signals, staged rollouts, and instant emergency recovery.
 
+## Why SREs use ALPHA:
 
-## Why ALPHA?
+1.  **Prioritized Hardening:** `alpha audit` scans your account and tells you exactly which roles are the most over-privileged.
+2.  **Explainable Risk:** Bedrock-powered reasoning tells you *why* it's safe to remove a permission and what the blast radius is.
+3.  **Staged Rollouts:** Deploy via Step Functions with canary traffic and auto-rollback on `AccessDenied` spikes.
+4.  **Instant Recovery:** Hit the "Undo" button with `alpha rollback` to restore pre-hardening state in seconds.
 
-
-
-1.  **High-Confidence Hardening:** Bedrock-powered reasoning explains *why* it's safe to remove a permission, reducing the fear of breaking production.
-
-2.  **Day 2 Observability:** Built-in drift detection (`diff`) and rollout monitoring (`status`) ensure your roles stay lean.
-
-3.  **Emergency Recovery:** One-command `rollback` reverts any change in seconds, minimizing MTTR.
-
-4.  **Staged Rollouts:** Deploy via Step Functions with canary traffic and auto-rollback on `AccessDenied` spikes.
-
-
+---
 
 ## 30-Second Quickstart
 
-
-
 ```bash
+# 1. Install
+pip install alpha-agent  # or poetry install
 
-# Analyze a role and get IaC patches (CFN/TF) in seconds
+# 2. Find where the risk is
+alpha audit --limit 5
 
-alpha analyze --role-arn arn:aws:iam::123:role/MyRole --output proposal.json
-
+# 3. Harden a role
+alpha analyze --role-arn arn:aws:iam::123:role/Overprivileged --output proposal.json
 ```
 
+---
 
+## The Hardening Lifecycle
 
-## Core Workflow
-
-
-
-### 1. `analyze` → High-Confidence Policy
-
-Generates a least-privilege policy using CloudTrail usage + Bedrock risk assessment.
-
+### 1. `analyze` → Human-Readable Rationale
+Generates least-privilege policies using CloudTrail + Bedrock risk assessment.
 ```bash
-
-alpha analyze --role-arn $ROLE_ARN --guardrails prod --output proposal.json
-
+alpha analyze --role-arn $ROLE --output proposal.json
 ```
-
-*Exit codes: 0=safe, 2=risky (>10% break prob), 3=guardrail violation.*
-
-
+*Outputs:* JSON bundle, Rationale, and ready-to-paste **Terraform/CloudFormation** patches.
 
 ### 2. `propose` → Peer Reviewed PRs
-
-Creates a GitHub PR with metrics like "**85% Privilege Reduction**" and a full rationale.
-
+Creates a GitHub PR with metrics like "**85% Privilege Reduction**".
 ```bash
-
 alpha propose --repo org/infra --branch harden/role --input proposal.json
-
 ```
 
-
-
-### 3. `apply` → Safe Staged Rollout
-
-Triggers a Step Functions workflow with canary deployment (e.g., 10% traffic).
-
+### 3. `apply` → Zero-Downtime Rollout
+Triggers a Step Functions workflow with canary deployment and automated health checks.
 ```bash
-
 alpha apply --state-machine-arn $SFN_ARN --proposal proposal.json --canary 10
-
 ```
-
-
 
 ---
 
+## Day 2 Operations (The SRE Toolkit)
 
-
-## Day 2 Operations (SRE Toolkit)
-
-
-
-### 🔍 Drift Detection
-
-Detect manual "permission creep" since the last hardening.
-
-```bash
-
-alpha diff --input proposal.json
-
-```
-
-
-
-### 📊 Rollout Monitoring
-
-Check progress of ongoing deployments directly from the CLI.
-
-```bash
-
-alpha status --role-arn $ROLE_ARN --state-machine-arn $SFN_ARN
-
-```
-
-
-
-### 🚑 Emergency Rollback
-
-Instant revert to the pre-ALPHA state if an edge case is hit.
-
-```bash
-
-alpha rollback --proposal proposal.json --state-machine-arn $SFN_ARN
-
-```
-
-
+| Command | Action | Value |
+| :--- | :--- | :--- |
+| `audit` | Scan account roles | Identify the top 10 biggest privilege gaps. |
+| `diff` | Compare against live | Detect manual "permission creep" instantly. |
+| `status` | Track rollout | Monitor canary progress from your terminal. |
+| `rollback` | Emergency revert | Instant "Undo" (even without the proposal file). |
 
 ---
-
-
 
 ## Installation & Setup
 
-
-
 ```bash
-
 git clone https://github.com/your-org/alpha.git && cd alpha && poetry install
-
 ```
 
-
-
-**Mock Mode (Offline Development):**
-
-Try it without AWS credentials or Bedrock costs:
-
+**Mock Mode (Zero-Cost Testing):**
+Test your CI pipelines without AWS credentials or Bedrock costs:
 ```bash
-
-alpha analyze --role-arn arn:aws:iam::123:role/Admin --mock-mode
-
+alpha audit --mock-mode
+alpha analyze --role-arn arn:aws:iam::123:role/MockRole --mock-mode
 ```
-
-
-
-## Key Features
-
-- **Fast Mode (Default):** Instant results using CloudTrail Event History.
-
-- **Analyzer Mode:** Resource-scoped policies using IAM Access Analyzer.
-
-- **Guardrails:** Hard constraints (e.g., block `iam:*`) that can't be bypassed by AI.
-
-- **Multi-Format:** CFN, Terraform, and JSON outputs ready for your IaC.
-
-
 
 [Quickstart Guide](QUICKSTART.md) • [Architecture](docs/ARCHITECTURE.md)
 
-
-
 ---
-
 Built for Production Stability • Best-in-class Bedrock Implementation
