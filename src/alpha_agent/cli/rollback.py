@@ -13,6 +13,7 @@ import boto3
 from alpha_agent.cli import EXIT_SUCCESS, EXIT_ERROR
 from alpha_agent.cli.apply import run_apply
 from alpha_agent.cli.formatters import Colors
+from alpha_agent.baseline_store import BaselineStore
 
 LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +23,6 @@ def run_rollback(
     proposal_path: Optional[str] = None,
     role_arn: Optional[str] = None,
     dry_run: bool = False,
-    mock_mode: bool = False,
 ) -> int:
     """
     Rollback a policy change using the original policy.
@@ -40,22 +40,30 @@ def run_rollback(
             with open(proposal_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             diff = data.get("diff")
+            baseline_blob = data.get("metadata", {}).get("baseline_policy")
             if diff and diff.get("existing_policy"):
                 original_policy = diff["existing_policy"]
                 metadata = data.get("metadata", {})
                 target_role = target_role or metadata.get("role_arn") or metadata.get("roleArn")
                 print(f"   Using original policy from file: {proposal_path}")
+            elif baseline_blob:
+                original_policy = baseline_blob
+                metadata = data.get("metadata", {})
+                target_role = target_role or metadata.get("role_arn") or metadata.get("roleArn")
+                print(f"   Using baseline snapshot from metadata in {proposal_path}")
             else:
                 print(f"⚠️  No 'existing_policy' found in {proposal_path}")
 
         # 2. Try to get from history if still missing
         if not original_policy and target_role:
-            if mock_mode:
-                print(f"🎭 {Colors.CYAN}Mock Mode: Simulating history lookup...{Colors.END}")
-                original_policy = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
-            else:
-                print(f"🔍 Searching execution history for {target_role}...")
-                original_policy = _find_original_policy_from_history(state_machine_arn, target_role)
+            print(f"🔍 Searching execution history for {target_role}...")
+            original_policy = _find_original_policy_from_history(state_machine_arn, target_role)
+        if not original_policy and target_role:
+            store = BaselineStore()
+            if store.enabled():
+                original_policy = store.load(target_role)
+                if original_policy:
+                    print(f"   Loaded baseline from baseline store for {target_role}")
 
         if not original_policy:
             print(f"❌ Error: Could not find original policy for rollback.")
@@ -105,7 +113,6 @@ def run_rollback(
                 rollback_threshold="None",
                 require_approval=False, 
                 dry_run=dry_run,
-                mock_mode=mock_mode
             )
         finally:
             if os.path.exists(tmp_path):

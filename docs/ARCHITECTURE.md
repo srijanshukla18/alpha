@@ -5,7 +5,6 @@ ALPHA is a CLI-first agent designed for the full lifecycle of IAM least-privileg
 ## Core Components
 
 ### 1. Policy Collectors
-- **Fast Mode (Default):** Queries `cloudtrail:LookupEvents` to map recent activity to IAM actions. Minimal latency, best-effort scoping.
 - **Analyzer Mode:** Orchestrates IAM Access Analyzer (`StartPolicyGeneration`) for resource-scoped policies based on historical trails.
 
 ### 2. Bedrock Reasoning
@@ -42,6 +41,5 @@ Post-processing engine that enforces hard constraints:
 
 ## Security Controls
 
-- **Mock Mode:** Deterministic offline execution for testing (`--mock-mode`).
 - **Auditability:** All proposals include the original policy and AI rationale for a permanent audit trail.
 - **Gating:** Exit code `2` (Risky) and `3` (Violation) stop pipelines by default.

@@ -40,7 +40,18 @@ def send_slack_webhook(
             fields.append({"type": "mrkdwn", "text": f"*{key}*\n{value}"})
         message["blocks"].append({"type": "section", "fields": fields})
 
-    response = session.post(webhook_url, data=json.dumps(message))
+    response = session.post(
+        webhook_url,
+        data=json.dumps(message),
+        timeout=10,
+        verify=True,
+    )
+    try:
+        response.raise_for_status()
+    except Exception as err:  # requests.HTTPError
+        raise NotificationError(
+            f"Slack webhook failed with {response.status_code}: {response.text}"
+        ) from err
     if response.status_code >= 400:
         raise NotificationError(
             f"Slack webhook failed with {response.status_code}: {response.text}"

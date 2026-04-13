@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from .models import PolicyDocument, PolicyGenerationRequest
@@ -19,7 +20,12 @@ class PolicyGenerationError(RuntimeError):
 
 
 def _build_access_analyzer_client() -> boto3.client:
-    return boto3.client("accessanalyzer")
+    cfg = Config(
+        connect_timeout=5,
+        read_timeout=30,
+        retries={"max_attempts": 10, "mode": "standard"},
+    )
+    return boto3.client("accessanalyzer", config=cfg)
 
 
 def start_policy_generation(

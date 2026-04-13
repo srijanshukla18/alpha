@@ -27,8 +27,5 @@ Next steps (run these):
 
 To invoke actions:
 
-  uv --directory $DIR run agentcore invoke '{"action":"analyze_fast_policy","roleArn":"'$ROLE_ARN'","usageDays":1,"region":"'$AWS_REGION'"}'
   uv --directory $DIR run agentcore invoke '{"action":"enforce_policy_guardrails","policy":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]},"preset":"prod"}'
-
-Tip: Set AGENTCORE_DIR=$DIR for demo_repl.py so it knows where to run these commands.
 EOF

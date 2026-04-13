@@ -49,6 +49,19 @@ class AlphaStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,  # For demo only
         )
 
+        # DynamoDB table for baselines (rollback/drift)
+        baseline_table = dynamodb.Table(
+            self,
+            "BaselineTable",
+            table_name="alpha-baselines",
+            partition_key=dynamodb.Attribute(
+                name="role_arn",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,  # For demo only
+        )
+
         # Common Lambda execution role with necessary permissions
         lambda_role = iam.Role(
             self,
@@ -106,10 +119,12 @@ class AlphaStack(Stack):
 
         # Grant DynamoDB access for approval table
         approval_table.grant_read_write_data(lambda_role)
+        baseline_table.grant_read_write_data(lambda_role)
 
         # Common environment variables
         common_env = {
             "APPROVAL_TABLE_NAME": approval_table.table_name,
+            "BASELINE_TABLE_NAME": baseline_table.table_name,
             "LOG_LEVEL": "INFO",
         }
 
@@ -317,6 +332,7 @@ class AlphaStack(Stack):
                     "stage": "sandbox",
                     "proposal.$": "$.sanitizedProposal.Payload.sanitized_proposal",
                     "role_arn.$": "$.context.roleArn",
+                    "baselinePolicy.$": "$.baselinePolicy",
                 }
             ),
             result_path="$.sandboxOutcome",
@@ -332,6 +348,7 @@ class AlphaStack(Stack):
                     "stage": "canary",
                     "proposal.$": "$.sanitizedProposal.Payload.sanitized_proposal",
                     "role_arn.$": "$.context.roleArn",
+                    "baselinePolicy.$": "$.baselinePolicy",
                 }
             ),
             result_path="$.canaryOutcome",
@@ -347,6 +364,7 @@ class AlphaStack(Stack):
                     "stage": "target",
                     "proposal.$": "$.sanitizedProposal.Payload.sanitized_proposal",
                     "role_arn.$": "$.context.roleArn",
+                    "baselinePolicy.$": "$.baselinePolicy",
                 }
             ),
             result_path="$.targetOutcome",

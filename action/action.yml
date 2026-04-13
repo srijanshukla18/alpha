@@ -34,11 +34,6 @@ inputs:
     description: 'Path to save proposal JSON (default: alpha-proposal.json)'
     required: false
     default: 'alpha-proposal.json'
-  mock_mode:
-    description: 'Use deterministic mock data for testing (true/false)'
-    required: false
-    default: 'false'
-
   # Propose mode inputs
   repo:
     description: 'GitHub repository (e.g., owner/repo) for propose mode'
@@ -108,21 +103,18 @@ runs:
       with:
         python-version: '3.11'
 
-    - name: Install Poetry
+    - name: Install uv
       shell: bash
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        pip install uv
 
     - name: Install ALPHA
       shell: bash
       run: |
-        # If running from the action directory, install local package
         if [ -f "${{ github.action_path }}/../pyproject.toml" ]; then
           cd "${{ github.action_path }}/.."
-          poetry install
+          UV_CACHE_DIR=.uv-cache uv sync --all-extras
         else
-          # Otherwise install from PyPI (future release)
           pip install alpha-agent
         fi
 
@@ -144,7 +136,6 @@ runs:
           [ -n "${{ inputs.exclude_services }}" ] && CMD="$CMD --exclude-services ${{ inputs.exclude_services }}"
           [ -n "${{ inputs.suppress_actions }}" ] && CMD="$CMD --suppress-actions ${{ inputs.suppress_actions }}"
           [ -n "${{ inputs.baseline_policy_name }}" ] && CMD="$CMD --baseline-policy-name ${{ inputs.baseline_policy_name }}"
-          [ "${{ inputs.mock_mode }}" == "true" ] && CMD="$CMD --mock-mode"
 
         elif [ "${{ inputs.mode }}" == "propose" ]; then
           CMD="alpha propose --repo ${{ inputs.repo }}"
@@ -165,7 +156,6 @@ runs:
           [ "${{ inputs.require_approval }}" == "true" ] && CMD="$CMD --require-approval"
           [ -n "${{ inputs.approval_table }}" ] && CMD="$CMD --approval-table ${{ inputs.approval_table }}"
           [ "${{ inputs.dry_run }}" == "true" ] && CMD="$CMD --dry-run"
-          [ "${{ inputs.mock_mode }}" == "true" ] && CMD="$CMD --mock-mode"
         else
           echo "❌ Invalid mode: ${{ inputs.mode }}"
           exit 1

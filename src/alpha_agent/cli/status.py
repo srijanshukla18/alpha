@@ -21,23 +21,11 @@ def run_status(
     role_arn: str,
     state_machine_arn: str,
     limit: int = 5,
-    mock_mode: bool = False,
 ) -> int:
     """
     Check status of recent rollouts for a role.
     """
     print(f"\n🔍 {Colors.BOLD}Checking rollout status for role:{Colors.END} {role_arn}")
-
-    if mock_mode:
-        print(f"🎭 {Colors.CYAN}Mock Mode: Returning mock rollout status...{Colors.END}")
-        _print_status_entry(
-            execution_id="exec-12345",
-            status="SUCCEEDED",
-            start_date=datetime.now(),
-            environment="prod",
-            canary="10%",
-        )
-        return EXIT_SUCCESS
 
     try:
         sfn = boto3.client("stepfunctions")

@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any, Dict
 
-from alpha_agent.approvals import ApprovalStore, ApprovalStoreError
+import alpha_agent.approvals as approvals
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not table_name:
             raise ValueError("APPROVAL_TABLE_NAME environment variable not set")
 
-        store = ApprovalStore(table_name)
+        store = approvals.ApprovalStore(table_name)
         latest_approval = store.latest(proposal_id)
 
         if latest_approval:
@@ -59,7 +59,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "approved": False,
         }
 
-    except ApprovalStoreError as err:
+    except approvals.ApprovalStoreError as err:
         LOGGER.error("Failed to check approval: %s", err)
         return {
             "statusCode": 500,

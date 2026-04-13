@@ -12,14 +12,12 @@ from typing import List, Dict, Any
 from alpha_agent.cli import EXIT_SUCCESS, EXIT_ERROR
 from alpha_agent.cli.formatters import Colors
 from alpha_agent.diff import get_role_action_count
-from alpha_agent.fast_collector import _collect_used_actions
 
 LOGGER = logging.getLogger(__name__)
 
 def run_audit(
     limit: int = 10,
     usage_days: int = 30,
-    mock_mode: bool = False,
 ) -> int:
     """
     Scan account for over-privileged roles.
@@ -27,13 +25,8 @@ def run_audit(
     print(f"\n🔍 {Colors.BOLD}Auditing account for over-privileged roles...{Colors.END}")
     print(f"   Analysis window: {usage_days} days\n")
 
-    if mock_mode:
-        _print_mock_audit()
-        return EXIT_SUCCESS
-
     try:
         iam = boto3.client("iam")
-        ct = boto3.client("cloudtrail")
         
         paginator = iam.get_paginator("list_roles")
         roles_to_check = []
@@ -57,13 +50,10 @@ def run_audit(
                 # 1. How many actions does it have?
                 granted_count = get_role_action_count(role_arn, iam)
                 
-                # 2. How many does it actually use?
-                # We use a very short timeout for audit speed
-                used_actions = _collect_used_actions(ct, role_arn, usage_days, max_seconds=3)
-                used_count = len(used_actions)
-                
-                gap = granted_count - used_count
-                
+                # 2. Usage data would require Access Analyzer per role; skipped for audit speed.
+                used_count = 0
+                gap = granted_count
+
                 results.append({
                     "name": role["RoleName"],
                     "arn": role_arn,
@@ -103,13 +93,3 @@ def _print_results_table(results: List[Dict[str, Any]]):
         )
     
     print(f"\n💡 {Colors.CYAN}Tip: Use 'alpha analyze --role-arn <ARN>' to harden the top roles.{Colors.END}\n")
-
-def _print_mock_audit():
-    mock_results = [
-        {"name": "AdminRole", "granted": 10000, "used": 45, "gap": 9955},
-        {"name": "EC2FullAccess", "granted": 450, "used": 12, "gap": 438},
-        {"name": "CI-Runner-Legacy", "granted": 280, "used": 40, "gap": 240},
-        {"name": "LambdaExec", "granted": 85, "used": 5, "gap": 80},
-        {"name": "ReadOnly", "granted": 1200, "used": 1150, "gap": 50},
-    ]
-    _print_results_table(mock_results)

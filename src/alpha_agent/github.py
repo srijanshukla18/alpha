@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Dict, Optional
 
 import requests
 
 LOGGER = logging.getLogger(__name__)
+
+REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 
 
 class GitHubError(RuntimeError):
@@ -41,7 +44,7 @@ class GitHubClient:
         Create a pull request for repo ``owner/name``.
         """
         owner_repo = repo.strip()
-        if owner_repo.count("/") != 1:
+        if not REPO_RE.match(owner_repo):
             raise GitHubError(f"Repository must be in owner/name format, got {repo}")
 
         endpoint = f"{self.api_url}/repos/{owner_repo}/pulls"

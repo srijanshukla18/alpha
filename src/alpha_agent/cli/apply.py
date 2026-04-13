@@ -13,9 +13,10 @@ import boto3
 from botocore.exceptions import ClientError
 
 from alpha_agent.cli import EXIT_SUCCESS, EXIT_ERROR
-from alpha_agent.cli.mock_mode import MockModeProvider
 from alpha_agent.approvals import ApprovalStore
 from alpha_agent.models import PolicyProposal
+from alpha_agent.baseline_store import BaselineStore
+from alpha_agent.diff import fetch_all_role_policies
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +30,6 @@ def run_apply(
     require_approval: bool = False,
     approval_table: str | None = None,
     dry_run: bool = False,
-    mock_mode: bool = False,
 ) -> int:
     """
     Apply policy via Step Functions staged rollout.
@@ -51,19 +51,13 @@ def run_apply(
         if require_approval:
             print(f"\n🔍 Checking approval status...")
 
-            if mock_mode:
-                # Mock mode: always approved
-                provider = MockModeProvider()
-                approved = provider.check_approval_status(role_arn)
-            else:
-                # Real mode: query DynamoDB
-                if not approval_table:
-                    print(f"❌ Error: --approval-table required when --require-approval is set")
-                    return EXIT_ERROR
+            if not approval_table:
+                print(f"❌ Error: --approval-table required when --require-approval is set")
+                return EXIT_ERROR
 
-                store = ApprovalStore(approval_table)
-                latest = store.latest(role_arn)
-                approved = latest and latest.approved if latest else False
+            store = ApprovalStore(approval_table)
+            latest = store.latest(role_arn)
+            approved = latest and latest.approved if latest else False
 
             if not approved:
                 print(f"⚠️  No approval found for {role_arn}")
@@ -74,6 +68,22 @@ def run_apply(
             print(f"✓ Approval confirmed")
 
         # Build Step Functions input
+        baseline_policy = None
+        try:
+            baseline_policy = fetch_all_role_policies(role_arn)
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            LOGGER.warning("Unable to capture baseline policy for rollback: %s", err)
+            baseline_policy = None
+
+        # Persist baseline if configured
+        store = BaselineStore()
+        if store.enabled() and baseline_policy:
+            try:
+                store.save(role_arn, baseline_policy)
+                LOGGER.info("Stored baseline for %s", role_arn)
+            except Exception as err:  # pylint: disable=broad-exception-caught
+                LOGGER.warning("Failed to store baseline snapshot: %s", err)
+
         input_payload = {
             "roleArn": role_arn,
             "environment": environment,
@@ -81,6 +91,7 @@ def run_apply(
             "rollbackThreshold": rollback_threshold,
             "proposal": proposal.model_dump(mode="json", by_alias=True),
             "metadata": metadata,
+            "baselinePolicy": baseline_policy.model_dump(by_alias=True) if baseline_policy else None,
         }
 
         # Dry run mode
@@ -96,22 +107,15 @@ def run_apply(
             return EXIT_SUCCESS
 
         # Start execution
-        if mock_mode:
-            # Mock mode: mock execution
-            print(f"\n🎭 Mock Mode: Simulating Step Functions execution...")
-            provider = MockModeProvider()
-            execution_arn = provider.start_step_functions_execution(state_machine_arn, input_payload)
-        else:
-            # Real mode: start actual execution
-            print(f"\n🚀 Starting Step Functions execution...")
-            client = boto3.client("stepfunctions")
+        print(f"\n🚀 Starting Step Functions execution...")
+        client = boto3.client("stepfunctions")
 
-            response = client.start_execution(
-                stateMachineArn=state_machine_arn,
-                input=json.dumps(input_payload),
-            )
+        response = client.start_execution(
+            stateMachineArn=state_machine_arn,
+            input=json.dumps(input_payload),
+        )
 
-            execution_arn = response["executionArn"]
+        execution_arn = response["executionArn"]
 
         print(f"✓ Rollout started successfully!")
         print(f"   Execution ARN: {execution_arn}")

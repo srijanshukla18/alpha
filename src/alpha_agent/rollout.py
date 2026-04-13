@@ -6,6 +6,7 @@ import time
 from typing import Dict, Optional
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from .models import PolicyDocument, RolloutOutcome, RolloutStage
@@ -18,7 +19,12 @@ class RolloutError(RuntimeError):
 
 
 def _build_iam_client() -> boto3.client:
-    return boto3.client("iam")
+    cfg = Config(
+        connect_timeout=5,
+        read_timeout=30,
+        retries={"max_attempts": 10, "mode": "standard"},
+    )
+    return boto3.client("iam", config=cfg)
 
 
 def _role_name_from_arn(role_arn: str) -> str:
@@ -30,15 +36,15 @@ def stage_policy_version(
     policy_document: PolicyDocument,
     description: str,
     client: Optional[boto3.client] = None,
+    policy_name: str = "ALPHAActive",
 ) -> str:
     """
-    Create a new inline policy document attached to the role.
+    Upsert an inline policy attached to the role.
 
-    Returns the policy name for reference.
+    Returns the policy name for reference. Keeps policy in place (no auto-delete).
     """
     client = client or _build_iam_client()
     role_name = _role_name_from_arn(role_arn)
-    policy_name = f"ALPHAManaged{int(time.time())}"
 
     try:
         client.put_role_policy(
@@ -51,19 +57,6 @@ def stage_policy_version(
 
     LOGGER.info("Staged policy %s on role %s", policy_name, role_name)
     return policy_name
-
-
-def delete_staged_policy(
-    role_arn: str, policy_name: str, client: Optional[boto3.client] = None
-) -> None:
-    client = client or _build_iam_client()
-    role_name = _role_name_from_arn(role_arn)
-    try:
-        client.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
-    except ClientError as err:
-        LOGGER.error("Failed to delete policy %s: %s", policy_name, err)
-        raise RolloutError(f"Failed to delete policy {policy_name}: {err}") from err
-    LOGGER.info("Deleted staged policy %s from role %s", policy_name, role_name)
 
 
 def evaluate_stage(stage: RolloutStage, metrics: Dict[str, float]) -> bool:
@@ -105,5 +98,20 @@ def orchestrate_rollout(
         return RolloutOutcome(
             stage=stage, succeeded=False, error=str(err), metrics={}
         )
-    finally:
-        delete_staged_policy(role_arn, policy_name)
+
+
+def restore_policy(role_arn: str, policy_document: PolicyDocument, client: Optional[boto3.client] = None) -> None:
+    """
+    Restore a baseline inline policy (used for rollback).
+    """
+    client = client or _build_iam_client()
+    role_name = _role_name_from_arn(role_arn)
+    try:
+        client.put_role_policy(
+            RoleName=role_name,
+            PolicyName="ALPHAActive",
+            PolicyDocument=json.dumps(policy_document.model_dump(by_alias=True)),
+        )
+        LOGGER.info("Restored baseline policy for %s", role_name)
+    except ClientError as err:
+        raise RolloutError(f"Failed to restore policy for {role_name}: {err}") from err

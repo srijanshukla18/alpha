@@ -4,14 +4,21 @@ import json
 from typing import Iterable, List, Optional, Set
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from .collector import PolicyGenerationError
 from .models import PolicyDiff, PolicyDocument
+from .validation import validate_role_arn
 
 
 def _build_iam_client() -> boto3.client:
-    return boto3.client("iam")
+    cfg = Config(
+        connect_timeout=5,
+        read_timeout=30,
+        retries={"max_attempts": 10, "mode": "standard"},
+    )
+    return boto3.client("iam", config=cfg)
 
 
 def _normalize_actions(statements: Iterable[dict]) -> Set[str]:
@@ -63,6 +70,7 @@ def fetch_inline_policy(
 
     Returns None when the policy is not present.
     """
+    validate_role_arn(role_arn)
     client = client or _build_iam_client()
     role_name = role_arn.split("/")[-1]
     try:
@@ -84,6 +92,7 @@ def fetch_all_role_policies(
     """
     Fetch and aggregate all inline and managed policies for an IAM role.
     """
+    validate_role_arn(role_arn)
     client = client or _build_iam_client()
     role_name = role_arn.split("/")[-1]
     all_statements = []

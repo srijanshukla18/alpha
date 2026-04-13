@@ -12,6 +12,7 @@ from alpha_agent.cli import EXIT_SUCCESS, EXIT_ERROR
 from alpha_agent.cli.formatters import Colors, format_terminal_summary
 from alpha_agent.diff import compute_policy_diff, fetch_all_role_policies
 from alpha_agent.models import PolicyProposal
+from alpha_agent.validation import validate_role_arn
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +20,6 @@ LOGGER = logging.getLogger(__name__)
 def run_diff(
     proposal_path: str,
     role_arn: str | None = None,
-    mock_mode: bool = False,
 ) -> int:
     """
     Compare proposal against live role state.
@@ -37,18 +37,12 @@ def run_diff(
             print(f"❌ Error: Role ARN not found in proposal and not provided via --role-arn")
             return EXIT_ERROR
 
+        validate_role_arn(target_role)
+
         print(f"\n🔍 {Colors.BOLD}Diffing proposal against live role:{Colors.END} {target_role}")
 
-        if mock_mode:
-            print(f"🎭 {Colors.CYAN}Mock Mode: Simulating diff...{Colors.END}")
-            # In mock mode, we just use the diff from the proposal file if it exists,
-            # otherwise we mock one.
-            from alpha_agent.cli.mock_mode import MockModeProvider
-            provider = MockModeProvider()
-            live_policy = provider.get_mock_policy(target_role)
-        else:
-            # Real mode: fetch from AWS
-            live_policy = fetch_all_role_policies(target_role)
+        # Real mode: fetch from AWS
+        live_policy = fetch_all_role_policies(target_role)
 
         # Compute diff
         diff = compute_policy_diff(live_policy, proposal.proposed_policy)

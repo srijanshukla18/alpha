@@ -20,9 +20,9 @@ poetry --version  # If not: curl -sSL https://install.python-poetry.org | python
 poetry install
 ```
 
-## Option A: Fast Mode (default, no analyzer wait)
+## Option A: Analyzer Mode (default)
 
-Best for CI and live demos. Uses CloudTrail Event History; finishes in seconds.
+Uses IAM Access Analyzer over recent CloudTrail history; finishes in minutes depending on trail size.
 
 ```bash
 export TARGET_ROLE=arn:aws:iam::YOUR_ACCOUNT:role/YourRole
@@ -40,25 +40,11 @@ cat proposal.json | head -20
 ```
 
 Notes
-- To force Analyzer mode, add `--no-fast`.
 - If Bedrock model access isn’t enabled, ALPHA falls back and still emits outputs.
 
-## Option B: Mock Mode (offline, deterministic)
+## Analyzer Mode (resource‑scoped)
 
-Great for offline demos; no AWS calls; same output every time.
-
-```bash
-poetry run alpha analyze \
-  --role-arn arn:aws:iam::123456789012:role/TestRole \
-  --mock-mode \
-  --output proposal.json \
-  --output-cloudformation cfn-patch.yml \
-  --output-terraform tf-patch.tf
-```
-
-## Option C: Analyzer Mode (resource‑scoped; slower)
-
-Provision Access Analyzer + CloudTrail trails, then run without fast mode.
+Provision Access Analyzer + CloudTrail trails, then run.
 
 Required IAM actions: `access-analyzer:StartPolicyGeneration`, `access-analyzer:GetGeneratedPolicy`, `cloudtrail:LookupEvents`, `iam:GetRole*`, `bedrock:InvokeModel`.
 
@@ -156,36 +142,10 @@ poetry run alpha apply \
   --proposal proposal.json \
   --environment sandbox \
   --canary 10
-```
 
-## Optional: Step Functions rollout demo
-
-Deploy a minimal state machine (all Pass states) using the provided definition (role must trust `states.amazonaws.com` and have Step Functions execution permissions):
-
-```bash
-aws iam create-role \
-  --role-name AlphaStepFunctionsRole \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"states.amazonaws.com"},"Action":"sts:AssumeRole"}]}' || true
-
-aws iam attach-role-policy \
-  --role-name AlphaStepFunctionsRole \
-  --policy-arn arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess || true
-
-aws stepfunctions create-state-machine \
-  --name AlphaMinimalRollout \
-  --definition file://workflows/minimal_state_machine.asl.json \
-  --role-arn arn:aws:iam::YOUR_ACCOUNT:role/AlphaStepFunctionsRole
-
-export STATE_MACHINE_ARN=arn:aws:states:us-east-1:YOUR_ACCOUNT:stateMachine:AlphaMinimalRollout
-
-poetry run alpha apply \
-  --state-machine-arn "$STATE_MACHINE_ARN" \
-  --proposal proposal.json \
-  --dry-run
-
-poetry run alpha apply \
-  --state-machine-arn "$STATE_MACHINE_ARN" \
-  --proposal proposal.json
+# (Optional) enable baseline snapshots for rollback/drift:
+# export BASELINE_TABLE_NAME=alpha-baselines
+# Baselines are captured automatically during `apply`.
 ```
 
 `alpha apply` defaults to `--require-approval False`. Add `--require-approval --approval-table <table>` once approvals are wired.
@@ -205,7 +165,6 @@ uv --directory agentcore_deploy run agentcore launch
 uv --directory agentcore_deploy run agentcore status
 
 # Invoke examples
-uv --directory agentcore_deploy run agentcore invoke '{"action":"analyze_fast_policy","roleArn":"'$ROLE_ARN'","usageDays":1,"region":"'$AWS_REGION'"}'
 uv --directory agentcore_deploy run agentcore invoke '{"action":"enforce_policy_guardrails","policy":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]},"preset":"prod"}'
 ```
 
@@ -219,7 +178,7 @@ Create analyzer first:
 Enable the specific model (Anthropic/Nova) in Bedrock → Model access; ensure your principal has `bedrock:InvokeModel`.
 
 ### "No CloudTrail events found"
-The role may have no recent activity. Try `--usage-days 1`, or use mock mode.
+The role may have no recent activity. Try `--usage-days 1` for a smaller window.
 
 ### "Exit code 2 (risky)"
 Bedrock estimated >10% break probability. Review:
@@ -259,9 +218,6 @@ Options:
 ## Quick Reference
 
 ```bash
-# Mock mode (offline, instant, $0)
-poetry run alpha analyze --role-arn arn:aws:iam::123:role/Test --mock-mode
-
 # Real analysis (30-90s, ~$0.25)
 poetry run alpha analyze --role-arn "$ROLE_ARN" --output proposal.json
 
@@ -296,10 +252,9 @@ poetry run alpha apply --state-machine-arn "$ARN" --proposal proposal.json --dry
 
 ## Next Steps
 
-1. **Try mock mode first** to learn the tool
-2. **Analyze a non-critical role** in your account
-3. **Review the proposal** before applying anything
-4. **Deploy infrastructure** only if you want full automation
-5. **Use `--dry-run`** on `alpha apply` until you trust it
+1. **Analyze a non-critical role** in your account
+2. **Review the proposal** before applying anything
+3. **Deploy infrastructure** only if you want full automation
+4. **Use `--dry-run`** on `alpha apply` until you trust it
 
 **Don't apply policies blindly. Review the diff first.**

@@ -7,14 +7,27 @@ from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
-from .models import PolicyDocument, PolicyProposal, RiskSignal
+from .models import PolicyDocument, PolicyProposal, RiskSignal, GuardrailViolation
 
 LOGGER = logging.getLogger(__name__)
 
 
 class BedrockReasoningError(RuntimeError):
     """Raised when Bedrock reasoning fails."""
+
+
+class _ProposalPayload(BaseModel):
+    """Strict schema for LLM output to mitigate prompt-injection/invalid JSON."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    policy: PolicyDocument
+    rationale: str = ""
+    risk_signal: RiskSignal = Field(default_factory=RiskSignal)
+    guardrail_violations: list[GuardrailViolation] = Field(default_factory=list)
+    remediation_notes: list[str] = Field(default_factory=list)
 
 
 class BedrockReasoner:
@@ -30,8 +43,17 @@ class BedrockReasoner:
     ) -> None:
         # Allow override via env var
         self.model_id = model_id or os.getenv("ALPHA_BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
-        self.client = client or boto3.client("bedrock-runtime")
+        self._client = client  # lazy init to avoid dependency during tests/offline
         self.temperature = temperature
+
+    @property
+    def client(self):
+        if self._client is None:
+            try:
+                self._client = boto3.client("bedrock-runtime")
+            except Exception as err:
+                raise BedrockReasoningError(f"Bedrock client unavailable: {err}") from err
+        return self._client
 
     def _build_prompt(self, context: Dict[str, Any], generated_policy: PolicyDocument) -> str:
         prompt_sections = [
@@ -129,16 +151,17 @@ class BedrockReasoner:
                     completion = completion
             if not completion or not isinstance(completion, str):
                 raise KeyError("No text completion found in response")
-            proposal_payload = json.loads(completion)
-        except (KeyError, json.JSONDecodeError) as err:
+            parsed_json = json.loads(completion)
+            payload = _ProposalPayload.model_validate(parsed_json)
+        except (KeyError, json.JSONDecodeError, ValidationError) as err:
             raise BedrockReasoningError(
-                f"Unexpected response structure from model: {response}"
+                f"Unexpected response structure from model: {err}"
             ) from err
 
         return PolicyProposal(
-            proposed_policy=PolicyDocument(**proposal_payload["policy"]),
-            rationale=proposal_payload.get("rationale", ""),
-            guardrail_violations=proposal_payload.get("guardrail_violations", []),
-            risk_signal=RiskSignal(**proposal_payload.get("risk_signal", {})),
-            remediation_notes=proposal_payload.get("remediation_notes", []),
+            proposed_policy=payload.policy,
+            rationale=payload.rationale,
+            guardrail_violations=payload.guardrail_violations,
+            risk_signal=payload.risk_signal,
+            remediation_notes=payload.remediation_notes,
         )

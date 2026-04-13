@@ -8,7 +8,7 @@ import os
 from typing import Any, Dict
 
 from alpha_agent.models import PolicyDocument
-from alpha_agent.reasoning import BedrockReasoner, BedrockReasoningError
+import alpha_agent.reasoning as reasoning
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-5-20250929-v1:0")
         temperature = float(os.getenv("BEDROCK_TEMPERATURE", "0.2"))
 
-        reasoner = BedrockReasoner(model_id=model_id, temperature=temperature)
+        reasoner = reasoning.BedrockReasoner(model_id=model_id, temperature=temperature)
         proposal = reasoner.propose_policy(context, policy)
 
         LOGGER.info("Successfully generated proposal for %s", context.get("role", "unknown"))
@@ -63,7 +63,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "proposal": proposal.model_dump(mode="json", by_alias=True),
         }
 
-    except BedrockReasoningError as err:
+    except reasoning.BedrockReasoningError as err:
         LOGGER.error("Bedrock reasoning failed: %s", err)
         return {
             "statusCode": 500,

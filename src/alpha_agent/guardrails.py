@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from .models import GuardrailViolation, PolicyDocument
 
@@ -21,6 +21,8 @@ def enforce_guardrails(
     blocked_actions: List[str],
     required_conditions: Dict[str, str],
     disallowed_services: List[str],
+    account_id: Optional[str] = None,
+    allowed_regions: Optional[List[str]] = None,
 ) -> Tuple[PolicyDocument, List[GuardrailViolation]]:
     """
     Review and adjust a policy document so it respects organizational guardrails.
@@ -67,6 +69,26 @@ def enforce_guardrails(
                     path=f"statement[{idx}]",
                 )
             )
+            statement["Action"] = [a for a in actions if a.split(":")[0] not in disallowed_services]
+            actions = statement["Action"]
+
+        # Special handling for iam:PassRole to ensure scoped resources
+        if any(a.lower() == "iam:passrole" for a in actions):
+            if account_id:
+                scoped = f"arn:aws:iam::{account_id}:role/*"
+                if resources == ["*"]:
+                    statement["Resource"] = [scoped]
+                elif "*" in resources:
+                    statement["Resource"] = [r for r in resources if r != "*"] + [scoped]
+            else:
+                statement["Action"] = [a for a in actions if a.lower() != "iam:passrole"]
+            violations.append(
+                GuardrailViolation(
+                    code=UNSUPPORTED_SERVICE_VIOLATION,
+                    message="iam:PassRole must be scoped to specific roles.",
+                    path=f"statement[{idx}]",
+                )
+            )
 
         conditions = statement.setdefault("Condition", {})
         for key, value in required_conditions.items():
@@ -79,10 +101,15 @@ def enforce_guardrails(
                     )
                 )
                 conditions[key] = value
+        if allowed_regions and "aws:RequestedRegion" not in conditions.get("StringEquals", {}):
+            conditions.setdefault("StringEquals", {})["aws:RequestedRegion"] = allowed_regions
 
-        # remove empty resource wildcards
+        # remove empty resource wildcards, add account scoping when possible
         if "*" in resources and len(resources) > 1:
             statement["Resource"] = [r for r in resources if r != "*"]
+        elif resources == ["*"] and account_id:
+            # add account scoping condition
+            conditions.setdefault("StringEquals", {})["aws:ResourceAccount"] = account_id
 
     sanitized = PolicyDocument(
         version=updated_policy.get("version", "2012-10-17"),

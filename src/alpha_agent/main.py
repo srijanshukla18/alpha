@@ -9,10 +9,7 @@ Commands:
   apply    - Execute staged rollout via Step Functions
 
 Examples:
-  # Analyze a role (mock mode for demo)
-  alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --mock-mode
-
-  # Analyze with real AWS APIs
+  # Analyze with AWS Access Analyzer + Bedrock
   alpha analyze --role-arn arn:aws:iam::123:role/ci-runner --output proposal.json
 
   # Create GitHub PR
@@ -35,6 +32,7 @@ from alpha_agent.cli.diff import run_diff
 from alpha_agent.cli.status import run_status
 from alpha_agent.cli.rollback import run_rollback
 from alpha_agent.cli.audit import run_audit
+from alpha_agent.cli.drift import run_drift
 
 # Configure logging
 logging.basicConfig(
@@ -107,12 +105,6 @@ def main() -> None:
     )
 
     analyze_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock data for offline demo (no AWS calls)",
-    )
-
-    analyze_parser.add_argument(
         "--output-cloudformation",
         help="Path to save CloudFormation YAML patch (e.g., cfn-patch.yml)",
     )
@@ -126,20 +118,6 @@ def main() -> None:
         "--timeout-seconds",
         type=int,
         help="Max seconds to wait for Access Analyzer job (default: 1800 or ALPHA_ANALYZE_TIMEOUT_SECONDS)",
-    )
-
-    analyze_parser.add_argument(
-        "--fast",
-        dest="fast",
-        action="store_true",
-        default=True,
-        help="Fast mode (default): use CloudTrail Event History (no Access Analyzer)",
-    )
-    analyze_parser.add_argument(
-        "--no-fast",
-        dest="fast",
-        action="store_false",
-        help="Disable fast mode; use Access Analyzer",
     )
 
     analyze_parser.add_argument(
@@ -249,12 +227,6 @@ def main() -> None:
         help="Show what would be done without executing",
     )
 
-    apply_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock execution (no AWS calls)",
-    )
-
     # ===== DIFF COMMAND =====
     diff_parser = subparsers.add_parser(
         "diff",
@@ -270,12 +242,6 @@ def main() -> None:
     diff_parser.add_argument(
         "--role-arn",
         help="Optional role ARN (overrides ARN in proposal)",
-    )
-
-    diff_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock data",
     )
 
     # ===== STATUS COMMAND =====
@@ -301,12 +267,6 @@ def main() -> None:
         type=int,
         default=5,
         help="Number of recent rollouts to show (default: 5)",
-    )
-
-    status_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock data",
     )
 
     # ===== ROLLBACK COMMAND =====
@@ -337,12 +297,6 @@ def main() -> None:
         help="Show what would be done without executing",
     )
 
-    rollback_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock execution",
-    )
-
     # ===== AUDIT COMMAND =====
     audit_parser = subparsers.add_parser(
         "audit",
@@ -363,10 +317,15 @@ def main() -> None:
         help="Window for CloudTrail analysis (default: 30)",
     )
 
-    audit_parser.add_argument(
-        "--mock-mode",
-        action="store_true",
-        help="Use deterministic mock data",
+    # ===== DRIFT COMMAND =====
+    drift_parser = subparsers.add_parser(
+        "drift",
+        help="Detect policy drift relative to stored baseline",
+    )
+    drift_parser.add_argument(
+        "--role-arn",
+        required=True,
+        help="IAM role ARN to check for drift",
     )
 
     # Parse arguments
@@ -394,11 +353,9 @@ def main() -> None:
                 baseline_policy_name=args.baseline_policy_name,
                 exclude_services=exclude_services,
                 suppress_actions=suppress_actions,
-                mock_mode=args.mock_mode,
                 output_cloudformation=args.output_cloudformation,
                 output_terraform=args.output_terraform,
                 timeout_seconds=args.timeout_seconds,
-                fast=args.fast,
                 bedrock_model_id=args.bedrock_model,
             )
 
@@ -423,14 +380,12 @@ def main() -> None:
                 require_approval=args.require_approval,
                 approval_table=args.approval_table,
                 dry_run=args.dry_run,
-                mock_mode=args.mock_mode,
             )
 
         elif args.command == "diff":
             exit_code = run_diff(
                 proposal_path=args.input,
                 role_arn=args.role_arn,
-                mock_mode=args.mock_mode,
             )
 
         elif args.command == "status":
@@ -438,7 +393,6 @@ def main() -> None:
                 role_arn=args.role_arn,
                 state_machine_arn=args.state_machine_arn,
                 limit=args.limit,
-                mock_mode=args.mock_mode,
             )
 
         elif args.command == "rollback":
@@ -447,14 +401,17 @@ def main() -> None:
                 role_arn=args.role_arn,
                 state_machine_arn=args.state_machine_arn,
                 dry_run=args.dry_run,
-                mock_mode=args.mock_mode,
             )
 
         elif args.command == "audit":
             exit_code = run_audit(
                 limit=args.limit,
                 usage_days=args.usage_days,
-                mock_mode=args.mock_mode,
+            )
+
+        elif args.command == "drift":
+            exit_code = run_drift(
+                role_arn=args.role_arn,
             )
 
         else:

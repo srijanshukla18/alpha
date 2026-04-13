@@ -6,14 +6,18 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict
+from datetime import datetime
 
 import boto3
 
+import alpha_agent.rollout as rollout_mod
 from alpha_agent.models import PolicyDocument, RolloutStage
-from alpha_agent.rollout import RolloutError, orchestrate_rollout
+from alpha_agent.rollout import RolloutError
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
+
+METRIC_NAMESPACE = os.getenv("CLOUDWATCH_NAMESPACE", "ALPHA/IAM")
 
 
 def _collect_cloudwatch_metrics(role_arn: str, namespace: str = "ALPHA/IAM") -> Dict[str, float]:
@@ -75,9 +79,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
     """
     try:
-        stage_name = event["stage"]
-        proposal_data = event["proposal"]
-        role_arn = event.get("role_arn") or proposal_data.get("role_arn")
+        stage_name = event.get("stage")
+        proposal_data = event.get("proposal")
+        role_arn = event.get("role_arn") or (proposal_data or {}).get("role_arn")
+        baseline_data = event.get("baselinePolicy")
+
+        if stage_name is None:
+            raise KeyError("stage")
+        if proposal_data is None:
+            raise KeyError("proposal")
 
         if not role_arn:
             raise KeyError("role_arn")
@@ -88,17 +98,44 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         description = proposal_data.get("rationale", "ALPHA policy update")
 
-        cloudwatch_namespace = os.getenv("CLOUDWATCH_NAMESPACE", "ALPHA/IAM")
-
-        outcome = orchestrate_rollout(
+        outcome = rollout_mod.orchestrate_rollout(
             role_arn=role_arn,
             policy_document=policy,
             stage=stage,
             metrics_collector=lambda: _collect_cloudwatch_metrics(
-                role_arn, cloudwatch_namespace
+                role_arn, METRIC_NAMESPACE
             ),
             description=description,
         )
+
+        # Publish metrics
+        try:
+            cw = boto3.client("cloudwatch")
+            cw.put_metric_data(
+                Namespace=METRIC_NAMESPACE,
+                MetricData=[
+                    {
+                        "MetricName": "ErrorRate",
+                        "Dimensions": [
+                            {"Name": "RoleArn", "Value": role_arn},
+                            {"Name": "Stage", "Value": stage.value},
+                        ],
+                        "Timestamp": datetime.utcnow(),
+                        "Value": outcome.metrics.get("error_rate", 0.0),
+                        "Unit": "Percent",
+                    }
+                ],
+            )
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            LOGGER.warning("Failed to publish CloudWatch metric: %s", err)
+
+        if not outcome.succeeded and baseline_data:
+            try:
+                baseline_policy = PolicyDocument(**baseline_data)
+                rollout_mod.restore_policy(role_arn, baseline_policy)
+                LOGGER.info("Baseline policy restored after failure for %s", role_arn)
+            except Exception as err:  # pylint: disable=broad-exception-caught
+                LOGGER.error("Failed to restore baseline policy: %s", err)
 
         LOGGER.info("Rollout stage %s completed: %s", stage, outcome.succeeded)
 

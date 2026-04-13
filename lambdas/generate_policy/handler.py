@@ -8,7 +8,8 @@ import logging
 import os
 from typing import Any, Dict
 
-from alpha_agent.collector import PolicyGenerationError, generate_policy
+import alpha_agent.collector as collector
+from alpha_agent.collector import PolicyGenerationError
 from alpha_agent.models import PolicyGenerationRequest
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +44,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             usage_period_days=event.get("usage_period_days", 30),
         )
 
-        policy_document = generate_policy(
+        policy_document = collector.generate_policy(
             request,
             poll_interval=int(os.getenv("POLL_INTERVAL_SECONDS", "10")),
             timeout_seconds=int(os.getenv("TIMEOUT_SECONDS", "600")),

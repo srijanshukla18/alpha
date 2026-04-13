@@ -25,12 +25,6 @@ Endpoints exposed (names match function names):
           "violations": [ {"code": ..., "message": ..., "path": ...}, ... ]
         }
 
-  - analyze_fast_policy(payload, context)
-      Input payload:
-        { "roleArn": "arn:aws:iam::...:role/...", "usageDays": 7, "region": "us-east-1" }
-      Output:
-        { "policy": { ... IAM policy document ... } }
-
 To deploy: point AgentCore Starter Toolkit to this module path as the entrypoint.
 """
 
@@ -52,7 +46,6 @@ except Exception:  # pragma: no cover - optional import for local development
 
 from .guardrails import enforce_guardrails
 from .models import PolicyDocument
-from .fast_collector import generate_policy_fast
 
 app = BedrockAgentCoreApp()
 
@@ -113,30 +106,17 @@ def _enforce(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _analyze_fast(payload: Dict[str, Any]) -> Dict[str, Any]:
-    role_arn = payload.get("roleArn") or payload.get("role_arn")
-    if not role_arn:
-        return {"error": "Missing 'roleArn' in payload"}
-    usage_days = int(payload.get("usageDays") or 30)
-    region = payload.get("region") or os.getenv("AWS_REGION", "us-east-1")
-
-    policy = generate_policy_fast(role_arn=role_arn, usage_days=usage_days, region=region)
-    return {"policy": policy.model_dump(by_alias=True)}
-
-
 @app.entrypoint
 def invoke(payload: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Single AgentCore entrypoint with action dispatch.
 
     Expected payload:
-      { "action": "enforce_policy_guardrails" | "analyze_fast_policy", ... }
+      { "action": "enforce_policy_guardrails", ... }
     """
     action = (payload.get("action") or "").strip()
     if action == "enforce_policy_guardrails":
         return _enforce(payload)
-    if action == "analyze_fast_policy":
-        return _analyze_fast(payload)
-    return {"error": "Missing or unsupported 'action'", "supported": ["enforce_policy_guardrails", "analyze_fast_policy"]}
+    return {"error": "Missing or unsupported 'action'", "supported": ["enforce_policy_guardrails"]}
 
 
 if __name__ == "__main__":  # pragma: no cover

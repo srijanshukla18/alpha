@@ -16,6 +16,9 @@ from alpha_agent.agentcore import AgentCoreTools, get_agentcore_tool_definitions
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
+# Precompute allowed tool names to avoid arbitrary getattr invocation.
+ALLOWED_TOOLS = {tool["name"] for tool in get_agentcore_tool_definitions()}
+
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
@@ -59,8 +62,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Handle tool invocation
         if action == "invoke_tool":
-            tool_name = event["tool_name"]
+            tool_name = event.get("tool_name")
             tool_input = event.get("tool_input", {})
+
+            if tool_name is None:
+                return {
+                    "statusCode": 400,
+                    "error": "Missing required field: tool_name",
+                }
+            if tool_name not in ALLOWED_TOOLS:
+                return {
+                    "statusCode": 404,
+                    "error": f"Tool '{tool_name}' not found",
+                }
 
             # Initialize tools with configuration from environment
             tools = AgentCoreTools(
@@ -69,15 +83,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 github_token=os.getenv("GITHUB_TOKEN"),
             )
 
-            # Route to appropriate tool
-            tool_method = getattr(tools, tool_name, None)
-            if not tool_method:
-                return {
-                    "statusCode": 404,
-                    "error": f"Tool '{tool_name}' not found",
-                }
-
-            # Invoke tool
+            # Route to appropriate tool (validated above)
+            tool_method = getattr(tools, tool_name)
             result = tool_method(**tool_input)
 
             return {

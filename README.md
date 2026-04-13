@@ -59,6 +59,7 @@ alpha apply --state-machine-arn $SFN_ARN --proposal proposal.json --canary 10
 | `diff` | Compare against live | Detect manual "permission creep" instantly. |
 | `status` | Track rollout | Monitor canary progress from your terminal. |
 | `rollback` | Emergency revert | Instant "Undo" (even without the proposal file). |
+| `drift` | Check drift vs baseline | Compares live role to stored baseline snapshot (Dynamo). |
 
 ---
 
@@ -68,14 +69,8 @@ alpha apply --state-machine-arn $SFN_ARN --proposal proposal.json --canary 10
 git clone https://github.com/your-org/alpha.git && cd alpha && poetry install
 ```
 
-**Mock Mode (Zero-Cost Testing):**
-Test your CI pipelines without AWS credentials or Bedrock costs:
-```bash
-alpha audit --mock-mode
-alpha analyze --role-arn arn:aws:iam::123:role/MockRole --mock-mode
-```
-
 [Quickstart Guide](QUICKSTART.md) • [Architecture](docs/ARCHITECTURE.md)
+[Lab Setup](docs/LAB_SETUP.md)
 
 ---
 Built for Production Stability • Best-in-class Bedrock Implementation
